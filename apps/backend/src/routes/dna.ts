@@ -303,7 +303,7 @@ ${context}`,
 
     if (lines.length === 0) {
       await db.update(dnaSubtopics).set({ synthesisStatus: 'failed' }).where(eq(dnaSubtopics.id, id));
-      return c.json({ error: 'No relevant content found in the uploaded documents for this subtopic.' }, 422);
+      return c.json({ error: 'No relevant content found in the uploaded documents for this topic.' }, 422);
     }
 
     // Delete old values, insert new ones
