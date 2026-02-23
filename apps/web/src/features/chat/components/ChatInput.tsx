@@ -92,7 +92,7 @@ export function ChatInput({
   // Text mode: textarea + optional mic toggle + send button
   return (
     <div className="shrink-0 border-t bg-background px-3 py-2 sm:px-4 sm:py-3">
-      <div className="flex items-end gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -117,9 +117,9 @@ export function ChatInput({
             aria-label={voiceState === "recording" ? "Stop listening" : "Start voice input"}
           >
             {voiceState === "recording" ? (
-              <MicOff className="size-5" />
+              <MicOff className="size-4 sm:size-5" />
             ) : (
-              <Mic className="size-5" />
+              <Mic className="size-4 sm:size-5" />
             )}
           </Button>
         )}
@@ -131,7 +131,7 @@ export function ChatInput({
           disabled={isLoading || !value?.trim()}
           aria-label="Send message"
         >
-          <Send className="size-5" />
+          <Send className="size-4 sm:size-5" />
         </Button>
       </div>
     </div>
