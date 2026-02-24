@@ -70,6 +70,9 @@ importers:
       postgres:
         specifier: ^3.4.8
         version: 3.4.8
+      postmark:
+        specifier: ^4.0.7
+        version: 4.0.7
       twilio:
         specifier: ^5.12.1
         version: 5.12.1
@@ -4570,6 +4573,9 @@ packages:
   postgres@3.4.8:
     resolution: {integrity: sha512-d+JFcLM17njZaOLkv6SCev7uoLaBtfK86vMUXhW1Z4glPWh4jozno9APvW/XKFJ3CCxVoC7OL38BqRydtu5nGg==}
     engines: {node: '>=12'}
+
+  postmark@4.0.7:
+    resolution: {integrity: sha512-DjNniUl1XNCGUKhCR98ePd5gv16rlUAVKKaU9TUqnE3hDSqfT9XDulu1idjagQmdyGscqnRtXk/puAEiYMeevg==}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -10009,6 +10015,12 @@ snapshots:
       xtend: 4.0.2
 
   postgres@3.4.8: {}
+
+  postmark@4.0.7:
+    dependencies:
+      axios: 1.13.5
+    transitivePeerDependencies:
+      - debug
 
   prelude-ls@1.2.1: {}
 

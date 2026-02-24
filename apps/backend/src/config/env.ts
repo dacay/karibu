@@ -60,6 +60,15 @@ const envSchema = z.object({
   CHROMA_TENANT: z.string().min(1),
   CHROMA_DATABASE: z.string().min(1),
   CHROMA_COLLECTION_NAME: z.string().min(1).default('karibu-documents'),
+
+  // Postmark (transactional email)
+  POSTMARK_API_KEY: z.string().min(1).optional(),
+  POSTMARK_FROM: z.string().default('noreply@karibu.ai'),
+
+  // URL template for building org-scoped frontend links.
+  // Use {subdomain} as the placeholder: e.g. "https://{subdomain}.karibu.ai"
+  // For local dev omit the placeholder: e.g. "http://localhost:3001"
+  FRONTEND_URL_TEMPLATE: z.string().min(1).default('http://localhost:3001'),
 })
 
 const parseEnv = () => {

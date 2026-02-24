@@ -1,9 +1,9 @@
 /**
  * Extracts the subdomain from the current hostname.
- * e.g. acme.karibu.ai → "acme", localhost → null, karibu.ai → null
+ * e.g. acme.karibu.ai → "acme", demo.localhost → "demo", localhost → null
  */
 export function getSubdomain(): string | null {
   if (typeof window === "undefined") return null;
-  const parts = window.location.hostname.split(".");
-  return parts.length >= 3 ? parts[0] : null;
+  const subdomain = window.location.hostname.split(".")[0];
+  return subdomain || null;
 }

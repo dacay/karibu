@@ -15,6 +15,7 @@ import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { useLogo } from "@/hooks/useLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,7 +70,7 @@ function getInitials(email: string): string {
 
 export function AdminRoot() {
   const { user, logout } = useAuth();
-  const { lightSrc, darkSrc, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading, onLightError, onDarkError } = useLogo();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -81,36 +82,40 @@ export function AdminRoot() {
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
       <aside className="flex w-56 shrink-0 flex-col border-r bg-sidebar">
-        <div className="flex h-[4.5rem] items-center px-5 border-b border-sidebar-border">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Image
-                    src={lightSrc}
-                    alt="Logo"
-                    width={96}
-                    height={32}
-                    className="block dark:hidden"
-                    onError={onLightError}
-                    priority
-                  />
-                  <Image
-                    src={darkSrc}
-                    alt="Logo"
-                    width={96}
-                    height={32}
-                    className="hidden dark:block"
-                    onError={onDarkError}
-                    priority
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {user?.organizationName}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+        <div className="flex h-[4.5rem] items-center justify-center px-5 border-b border-sidebar-border">
+          {isLoading ? (
+            <Spinner />
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Image
+                      src={lightSrc}
+                      alt="Logo"
+                      width={96}
+                      height={32}
+                      className="block dark:hidden"
+                      onError={onLightError}
+                      priority
+                    />
+                    <Image
+                      src={darkSrc}
+                      alt="Logo"
+                      width={96}
+                      height={32}
+                      className="hidden dark:block"
+                      onError={onDarkError}
+                      priority
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {user?.organizationName}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-0.5">

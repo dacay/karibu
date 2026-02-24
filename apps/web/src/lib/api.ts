@@ -118,6 +118,23 @@ export interface Document {
   updatedAt: string;
 }
 
+export interface TeamMember {
+  id: string;
+  email: string;
+  role: "admin" | "user";
+  createdAt: string;
+  hasToken: boolean;
+  tokenCreatedAt: string | null;
+  tokenLastUsedAt: string | null;
+  tokenExpired: boolean | null;
+}
+
+export interface InviteResult {
+  invited: string[];
+  alreadyExists: string[];
+  failed: string[];
+}
+
 // ----- Namespaced API client -----
 
 export const api = {
@@ -177,5 +194,20 @@ export const api = {
       }),
     deleteValue: (id: string) =>
       request<{ success: boolean }>(`/dna/values/${id}`, { method: "DELETE" }),
+  },
+  team: {
+    list: () =>
+      request<{ users: TeamMember[] }>("/team"),
+    invite: (emails: string) =>
+      request<InviteResult>("/team/invite", {
+        method: "POST",
+        body: JSON.stringify({ emails }),
+      }),
+    resendInvite: (userId: string) =>
+      request<{ success: boolean }>(`/team/${userId}/resend-invite`, { method: "POST" }),
+    regenerateToken: (userId: string) =>
+      request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
+    remove: (userId: string) =>
+      request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
   },
 };

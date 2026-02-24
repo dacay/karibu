@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const { lightSrc, darkSrc, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading, onLightError, onDarkError } = useLogo();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,25 +37,31 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background">
       <Card className="w-full max-w-sm">
         <CardContent className="px-8 pt-8 pb-8">
-          <div className="mb-6 flex justify-center">
-            <Image
-              src={lightSrc}
-              alt="Logo"
-              width={120}
-              height={40}
-              className="block dark:hidden"
-              onError={onLightError}
-              priority
-            />
-            <Image
-              src={darkSrc}
-              alt="Logo"
-              width={120}
-              height={40}
-              className="hidden dark:block"
-              onError={onDarkError}
-              priority
-            />
+          <div className="mb-6 flex justify-center min-h-[40px] items-center">
+            {isLoading ? (
+              <Spinner />
+            ) : (
+              <>
+                <Image
+                  src={lightSrc}
+                  alt="Logo"
+                  width={120}
+                  height={40}
+                  className="block dark:hidden"
+                  onError={onLightError}
+                  priority
+                />
+                <Image
+                  src={darkSrc}
+                  alt="Logo"
+                  width={120}
+                  height={40}
+                  className="hidden dark:block"
+                  onError={onDarkError}
+                  priority
+                />
+              </>
+            )}
           </div>
 
           <div className="mb-5 text-center">
