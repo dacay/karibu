@@ -118,6 +118,17 @@ export interface Document {
   updatedAt: string;
 }
 
+export interface ConversationPattern {
+  id: string;
+  organizationId: string | null;
+  name: string;
+  description: string;
+  prompt: string;
+  isBuiltIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TeamMember {
   id: string;
   email: string;
@@ -194,6 +205,22 @@ export const api = {
       }),
     deleteValue: (id: string) =>
       request<{ success: boolean }>(`/dna/values/${id}`, { method: "DELETE" }),
+  },
+  patterns: {
+    list: () =>
+      request<{ patterns: ConversationPattern[] }>("/patterns"),
+    create: (body: { name: string; description: string; prompt: string }) =>
+      request<{ pattern: ConversationPattern }>("/patterns", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: { name?: string; description?: string; prompt?: string }) =>
+      request<{ pattern: ConversationPattern }>(`/patterns/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/patterns/${id}`, { method: "DELETE" }),
   },
   team: {
     list: () =>
