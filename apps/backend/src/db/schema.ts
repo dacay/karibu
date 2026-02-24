@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean } from 'drizzle-orm/pg-core';
 
 // Role enum
 export const roleEnum = pgEnum('role', ['admin', 'user']);
@@ -173,6 +173,19 @@ export const dnaValues = pgTable('dna_values', {
   ...timestamps,
 }, (table) => [
   index('dna_values_subtopic_id_idx').on(table.subtopicId),
+]);
+
+// Conversation patterns table - defines AI conversation modes for microlearnings
+export const conversationPatterns = pgTable('conversation_patterns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }), // null = built-in global pattern
+  name: text('name').notNull(),
+  description: text('description').notNull(),
+  prompt: text('prompt').notNull(),
+  isBuiltIn: boolean('is_built_in').notNull().default(false),
+  ...timestamps,
+}, (table) => [
+  index('conversation_patterns_organization_id_idx').on(table.organizationId),
 ]);
 
 // Document status enum

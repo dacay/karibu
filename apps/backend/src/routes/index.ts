@@ -5,6 +5,7 @@ import chat from './chat.js';
 import documents from './documents.js';
 import dna from './dna.js';
 import team from './team.js';
+import patterns from './patterns.js';
 import { organizationMiddleware } from '../middleware/organization.js';
 
 export const registerRoutes = (app: Hono) => {
@@ -29,4 +30,7 @@ export const registerRoutes = (app: Hono) => {
 
   // Team management routes (admin only)
   app.route('/team', team);
+
+  // Conversation patterns routes (admin only)
+  app.route('/patterns', patterns);
 }

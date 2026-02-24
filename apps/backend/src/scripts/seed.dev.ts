@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import { eq } from 'drizzle-orm';
 import { organizations, users, authTokens } from '../db/schema.js';
 import { hashPassword } from '../utils/crypto.js';
+import { seedDefaults } from './seed.defaults.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -80,6 +81,9 @@ async function seed() {
       expiresAt: new Date('2099-01-01'),
     })
     .onConflictDoNothing();
+
+  // Seed global defaults (built-in patterns, etc.)
+  await seedDefaults(db);
 
   console.log('\nSeed complete!');
   console.log('  Organization subdomain: demo');
