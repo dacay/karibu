@@ -129,3 +129,17 @@ export const buildDocumentKey = (organizationId: string, documentId: string, fil
 
   return `${prefix}${organizationId}/${documentId}${suffix}`;
 }
+
+/**
+ * Build the S3 key for an avatar image given organization and avatar ID.
+ * Uses the "avatars/" prefix to keep avatar images separate from documents.
+ * Optionally prefixed by S3_KEY_PREFIX (e.g. "prod" → "prod/avatars/{orgId}/{avatarId}.jpg").
+ */
+export const buildAvatarImageKey = (organizationId: string, avatarId: string, filename: string): string => {
+
+  const ext = filename.includes('.') ? filename.split('.').pop() : '';
+  const suffix = ext ? `.${ext}` : '';
+  const prefix = env.S3_KEY_PREFIX ? `${env.S3_KEY_PREFIX}/` : '';
+
+  return `${prefix}avatars/${organizationId}/${avatarId}${suffix}`;
+}

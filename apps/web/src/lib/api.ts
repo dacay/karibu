@@ -129,6 +129,42 @@ export interface ConversationPattern {
   updatedAt: string;
 }
 
+export interface Avatar {
+  id: string;
+  organizationId: string | null;
+  name: string;
+  personality: string;
+  imageS3Key: string | null;
+  imageS3Bucket: string | null;
+  imageUrl: string | null;
+  voiceId: string;
+  isBuiltIn: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ElevenLabsVoice {
+  id: string;
+  name: string;
+  gender: "male" | "female";
+  description: string;
+}
+
+export const ELEVENLABS_VOICES: ElevenLabsVoice[] = [
+  // Female voices
+  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", gender: "female", description: "Calm, professional" },
+  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", gender: "female", description: "Strong, expressive" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", gender: "female", description: "Soft, pleasant" },
+  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", gender: "female", description: "Warm, emotional" },
+  { id: "LcfcDJNUP1GQjkzn1xUU", name: "Emily", gender: "female", description: "Calm, clear" },
+  // Male voices
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", gender: "male", description: "Deep, authoritative" },
+  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", gender: "male", description: "Well-rounded, engaging" },
+  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", gender: "male", description: "Crisp, confident" },
+  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", gender: "male", description: "Deep, conversational" },
+  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", gender: "male", description: "Raspy, strong" },
+];
+
 export interface TeamMember {
   id: string;
   email: string;
@@ -236,5 +272,21 @@ export const api = {
       request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
     remove: (userId: string) =>
       request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
+  },
+  avatars: {
+    list: () =>
+      request<{ avatars: Avatar[] }>("/avatars"),
+    create: (formData: FormData) =>
+      upload<{ avatar: Avatar }>("/avatars", formData),
+    update: (id: string, formData: FormData) => {
+      const token = getToken();
+      return fetch(`${BASE_URL}/avatars/${id}`, {
+        method: "PATCH",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: formData,
+      }).then((res) => handleResponse<{ avatar: Avatar }>(res));
+    },
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/avatars/${id}`, { method: "DELETE" }),
   },
 };

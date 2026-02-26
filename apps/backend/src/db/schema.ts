@@ -188,6 +188,21 @@ export const conversationPatterns = pgTable('conversation_patterns', {
   index('conversation_patterns_organization_id_idx').on(table.organizationId),
 ]);
 
+// Avatars table - AI personas with name, personality, image and voice
+export const avatars = pgTable('avatars', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }), // null = built-in
+  name: text('name').notNull(),
+  personality: text('personality').notNull(),
+  imageS3Key: text('image_s3_key'),
+  imageS3Bucket: text('image_s3_bucket'),
+  voiceId: text('voice_id').notNull(),
+  isBuiltIn: boolean('is_built_in').notNull().default(false),
+  ...timestamps,
+}, (table) => [
+  index('avatars_organization_id_idx').on(table.organizationId),
+]);
+
 // Document status enum
 export const documentStatusEnum = pgEnum('document_status', ['uploaded', 'processing', 'processed', 'failed']);
 

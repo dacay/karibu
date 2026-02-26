@@ -6,6 +6,7 @@ import documents from './documents.js';
 import dna from './dna.js';
 import team from './team.js';
 import patterns from './patterns.js';
+import avatarsRouter from './avatars.js';
 import { organizationMiddleware } from '../middleware/organization.js';
 
 export const registerRoutes = (app: Hono) => {
@@ -33,4 +34,7 @@ export const registerRoutes = (app: Hono) => {
 
   // Conversation patterns routes (admin only)
   app.route('/patterns', patterns);
+
+  // Avatar management routes (admin only)
+  app.route('/avatars', avatarsRouter);
 }
