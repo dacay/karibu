@@ -170,6 +170,7 @@ export const dnaValues = pgTable('dna_values', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   approval: dnaApprovalEnum('approval').notNull().default('pending'),
+  userEdited: boolean('user_edited').notNull().default(false),
   ...timestamps,
 }, (table) => [
   index('dna_values_subtopic_id_idx').on(table.subtopicId),

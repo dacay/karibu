@@ -344,6 +344,41 @@ ${context}`,
 });
 
 /**
+ * PATCH /dna/values/:id/content
+ * Update the content of a DNA value (marks it as user-edited).
+ */
+dnaRouter.patch('/values/:id/content', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+  const body = await c.req.json<{ content: string }>();
+
+  if (!body.content?.trim()) {
+    return c.json({ error: 'Content is required.' }, 400);
+  }
+
+  const [value] = await db
+    .select()
+    .from(dnaValues)
+    .where(and(eq(dnaValues.id, id), eq(dnaValues.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!value) {
+    return c.json({ error: 'Value not found.' }, 404);
+  }
+
+  const [updated] = await db
+    .update(dnaValues)
+    .set({ content: body.content.trim(), userEdited: true })
+    .where(eq(dnaValues.id, id))
+    .returning();
+
+  logger.info({ valueId: id, organizationId: auth.organizationId }, 'DNA value content updated by user.');
+
+  return c.json({ value: updated });
+});
+
+/**
  * PATCH /dna/values/:id/approval
  * Update the approval status of a DNA value.
  */
