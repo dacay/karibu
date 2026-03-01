@@ -13,6 +13,7 @@ import {
   X,
   Wand2,
   Pencil,
+  Loader2,
 } from "lucide-react";
 import {
   Accordion,
@@ -147,7 +148,9 @@ function ValueRow({ value }: { value: DnaValue }) {
           onClick={() => approveMutation.mutate("approved")}
           aria-label="Approve"
         >
-          <Check className="size-3" />
+          {approveMutation.isPending && approveMutation.variables === "approved"
+            ? <Loader2 className="size-3 animate-spin" />
+            : <Check className="size-3" />}
         </Button>
         <Button
           variant="ghost"
@@ -157,7 +160,9 @@ function ValueRow({ value }: { value: DnaValue }) {
           onClick={() => approveMutation.mutate("rejected")}
           aria-label="Reject"
         >
-          <X className="size-3" />
+          {approveMutation.isPending && approveMutation.variables === "rejected"
+            ? <Loader2 className="size-3 animate-spin" />
+            : <X className="size-3" />}
         </Button>
         <Button
           variant="ghost"
