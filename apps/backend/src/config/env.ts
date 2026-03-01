@@ -52,9 +52,9 @@ const envSchema = z.object({
   S3_DOCS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
   S3_MAX_UPLOAD_SIZE_MB: z.string().default('20').transform(Number),
 
-  // S3 — Avatar Images (CDN-fronted, public read)
-  S3_AVATAR_BUCKET_NAME: z.string().min(1).optional(),
-  S3_AVATAR_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
+  // S3 — Assets (avatars, logos — CDN-fronted, public read)
+  S3_ASSETS_BUCKET_NAME: z.string().min(1).optional(),
+  S3_ASSETS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
 
   // DNA Synthesis
   DNA_SYNTHESIS_MIN_VALUES: z.string().default('5').transform(Number),

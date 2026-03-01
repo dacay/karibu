@@ -34,14 +34,14 @@ const getDocsBucketName = (): string => {
   return env.S3_DOCS_BUCKET_NAME;
 }
 
-const getAvatarBucketName = (): string => {
+const getAssetsBucketName = (): string => {
 
-  if (!env.S3_AVATAR_BUCKET_NAME) {
+  if (!env.S3_ASSETS_BUCKET_NAME) {
 
-    throw new Error('S3_AVATAR_BUCKET_NAME is not configured.');
+    throw new Error('S3_ASSETS_BUCKET_NAME is not configured.');
   }
 
-  return env.S3_AVATAR_BUCKET_NAME;
+  return env.S3_ASSETS_BUCKET_NAME;
 }
 
 export interface UploadResult {
@@ -109,13 +109,13 @@ export const downloadFromDocsBucket = async (key: string): Promise<Buffer> => {
   return Buffer.concat(chunks);
 }
 
-// ─── Avatar bucket (CDN-fronted, public read) ──────────────────────────────────
+// ─── Assets bucket (CDN-fronted, public read) ──────────────────────────────────
 
-export const uploadToAvatarBucket = (key: string, body: Buffer, mimeType: string): Promise<UploadResult> =>
-  upload(getAvatarBucketName(), key, body, mimeType)
+export const uploadToAssetsBucket = (key: string, body: Buffer, mimeType: string): Promise<UploadResult> =>
+  upload(getAssetsBucketName(), key, body, mimeType)
 
-export const deleteFromAvatarBucket = (key: string): Promise<void> =>
-  remove(getAvatarBucketName(), key)
+export const deleteFromAssetsBucket = (key: string): Promise<void> =>
+  remove(getAssetsBucketName(), key)
 
 /**
  * Build the S3 key for a document given organization and filename.
@@ -138,7 +138,20 @@ export const buildAvatarImageKey = (subdomain: string, avatarId: string, filenam
 
   const ext = filename.includes('.') ? filename.split('.').pop() : '';
   const suffix = ext ? `.${ext}` : '';
-  const prefix = env.S3_AVATAR_KEY_PREFIX ? `${env.S3_AVATAR_KEY_PREFIX}/` : '';
+  const prefix = env.S3_ASSETS_KEY_PREFIX ? `${env.S3_ASSETS_KEY_PREFIX}/` : '';
 
   return `${prefix}${subdomain}/avatars/${avatarId}${suffix}`;
+}
+
+/**
+ * Build the S3 key for an org logo.
+ * Pattern: {prefix}/{subdomain}/logo-{variant}.png
+ */
+export type LogoVariant = 'light' | 'dark';
+
+export const buildOrgLogoKey = (subdomain: string, variant: LogoVariant): string => {
+
+  const prefix = env.S3_ASSETS_KEY_PREFIX ? `${env.S3_ASSETS_KEY_PREFIX}/` : '';
+
+  return `${prefix}${subdomain}/logo-${variant}.png`;
 }

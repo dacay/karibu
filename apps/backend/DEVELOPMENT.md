@@ -117,17 +117,20 @@ See [CONVENTIONS.md](../../CONVENTIONS.md) for the general style guide.
 The backend uses two separate S3 buckets:
 
 - **Documents bucket** (`S3_DOCS_BUCKET_NAME`) — private, accessed via presigned URLs or direct download
-- **Avatar bucket** (`S3_AVATAR_BUCKET_NAME`) — CDN-fronted, public read via CloudFront
+- **Assets bucket** (`S3_ASSETS_BUCKET_NAME`) — CDN-fronted, public read via CloudFront (avatars, org logos)
 
-Each bucket has its own key prefix env var (`S3_DOCS_KEY_PREFIX`, `S3_AVATAR_KEY_PREFIX`) for environment separation (e.g. `prod`, `staging`). Both default to empty.
+Each bucket has its own key prefix env var (`S3_DOCS_KEY_PREFIX`, `S3_ASSETS_KEY_PREFIX`) for environment separation (e.g. `prod`, `staging`). Both default to empty.
 
 ### Key Structure
 
 **Documents**: `{S3_DOCS_KEY_PREFIX}/{organizationId}/{documentId}.{ext}`
 - Uses **organizationId (UUID)** as the folder prefix. Subdomains are mutable — if an org changes their subdomain, stored S3 keys would break. UUIDs are immutable.
 
-**Avatars**: `{S3_AVATAR_KEY_PREFIX}/{subdomain}/avatars/{avatarId}.{ext}`
-- Uses **subdomain** as the folder prefix. This matches the CDN URL structure (same as logos: `{subdomain}/logo-light.png`), so CloudFront serves everything under the org's subdomain path.
+**Avatars**: `{S3_ASSETS_KEY_PREFIX}/{subdomain}/avatars/{avatarId}.{ext}`
+- Uses **subdomain** as the folder prefix. This matches the CDN URL structure, so CloudFront serves everything under the org's subdomain path.
+
+**Org logos**: `{S3_ASSETS_KEY_PREFIX}/{subdomain}/logo-{light|dark}.png`
+- Same subdomain-scoped pattern. Uploaded by admins via the Organization config page.
 
 ### AWS IAM — Minimal Policy
 The backend IAM user needs access to both buckets:
