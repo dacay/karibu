@@ -49,6 +49,7 @@ export default function LoginPage() {
                   height={40}
                   className="block dark:hidden"
                   onError={onLightError}
+                  unoptimized
                   priority
                 />
                 <Image
@@ -58,6 +59,7 @@ export default function LoginPage() {
                   height={40}
                   className="hidden dark:block"
                   onError={onDarkError}
+                  unoptimized
                   priority
                 />
               </>

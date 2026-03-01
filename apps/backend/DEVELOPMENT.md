@@ -131,6 +131,7 @@ Each bucket has its own key prefix env var (`S3_DOCS_KEY_PREFIX`, `S3_ASSETS_KEY
 
 **Org logos**: `{S3_ASSETS_KEY_PREFIX}/{subdomain}/logo-{light|dark}.png`
 - Same subdomain-scoped pattern. Uploaded by admins via the Organization config page.
+- Uploaded with `Cache-Control: no-cache` so CloudFront revalidates on every request (logos change infrequently but must propagate immediately).
 
 ### AWS IAM — Minimal Policy
 The backend IAM user needs access to both buckets:

@@ -8,6 +8,7 @@ import {
   UserCircle,
   MessageSquare,
   Users,
+  Building2,
   ChevronDown,
   Sun,
   Moon,
@@ -44,8 +45,9 @@ import { MicrolearningsSection } from "./sections/Microlearnings";
 import { AvatarsSection } from "./sections/Avatars";
 import { PatternsSection } from "./sections/Patterns";
 import { TeamSection } from "./sections/Team";
+import { OrganizationSection } from "./sections/Organization";
 
-type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team";
+type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team" | "organization";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -54,6 +56,7 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "avatars", label: "Avatars", icon: UserCircle },
   { id: "patterns", label: "Patterns", icon: MessageSquare },
   { id: "team", label: "Team", icon: Users },
+  { id: "organization", label: "Organization", icon: Building2 },
 ];
 
 const SECTION_MAP: Record<SectionId, React.ReactNode> = {
@@ -63,6 +66,7 @@ const SECTION_MAP: Record<SectionId, React.ReactNode> = {
   avatars: <AvatarsSection />,
   patterns: <PatternsSection />,
   team: <TeamSection />,
+  organization: <OrganizationSection />,
 };
 
 function getInitials(email: string): string {
@@ -110,6 +114,7 @@ export function AdminRoot() {
                       height={32}
                       className="block dark:hidden"
                       onError={onLightError}
+                      unoptimized
                       priority
                     />
                     <Image
@@ -119,6 +124,7 @@ export function AdminRoot() {
                       height={32}
                       className="hidden dark:block"
                       onError={onDarkError}
+                      unoptimized
                       priority
                     />
                   </div>

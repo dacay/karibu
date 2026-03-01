@@ -182,6 +182,12 @@ export interface InviteResult {
   failed: string[];
 }
 
+export interface OrgConfig {
+  name: string;
+  subdomain: string;
+  pronunciation: string | null;
+}
+
 // ----- Namespaced API client -----
 
 export const api = {
@@ -279,6 +285,20 @@ export const api = {
       request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
     remove: (userId: string) =>
       request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
+  },
+  org: {
+    getConfig: () => request<OrgConfig>("/org/config"),
+    updateConfig: (body: { name?: string; pronunciation?: string | null }) =>
+      request<OrgConfig>("/org/config", {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    uploadLogo: (variant: "light" | "dark", file: File) => {
+      const formData = new FormData();
+      formData.append("variant", variant);
+      formData.append("file", file);
+      return upload<{ success: boolean; key: string }>("/org/logo", formData);
+    },
   },
   avatars: {
     list: () =>
