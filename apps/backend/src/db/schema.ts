@@ -14,6 +14,7 @@ export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   subdomain: text('subdomain').notNull().unique(),
+  pronunciation: text('pronunciation'),
   ...timestamps,
 });
 

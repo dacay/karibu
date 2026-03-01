@@ -46,6 +46,7 @@ export interface Organization {
   id: string;
   name: string;
   subdomain: string;
+  pronunciation: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
