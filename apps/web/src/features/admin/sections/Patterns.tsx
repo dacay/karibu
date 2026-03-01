@@ -247,13 +247,13 @@ export function PatternsSection() {
 
       {!isLoading && (
         <>
-          {/* Built-in patterns */}
-          {builtIn.length > 0 && (
+          {/* Custom patterns */}
+          {custom.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Built-in Patterns
+                Your Patterns
               </h3>
-              {builtIn.map((pattern) => (
+              {custom.map((pattern) => (
                 <PatternCard
                   key={pattern.id}
                   pattern={pattern}
@@ -265,13 +265,13 @@ export function PatternsSection() {
 
           {builtIn.length > 0 && custom.length > 0 && <Separator />}
 
-          {/* Custom patterns */}
-          {custom.length > 0 && (
+          {/* Built-in patterns */}
+          {builtIn.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                Your Patterns
+                Built-in Patterns
               </h3>
-              {custom.map((pattern) => (
+              {builtIn.map((pattern) => (
                 <PatternCard
                   key={pattern.id}
                   pattern={pattern}
