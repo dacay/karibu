@@ -3,7 +3,7 @@ import { eq, and, or, isNull } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { avatars } from '../db/schema.js';
-import { uploadToAvatarBucket, deleteFromAvatarBucket, buildAvatarImageKey } from '../services/s3.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildAvatarImageKey } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const avatarsRouter = new Hono();
@@ -114,7 +114,7 @@ avatarsRouter.post('/', requireRole('admin'), async (c) => {
     try {
 
       const buffer = Buffer.from(await imageFile.arrayBuffer());
-      const { s3Bucket } = await uploadToAvatarBucket(s3Key, buffer, imageFile.type);
+      const { s3Bucket } = await uploadToAssetsBucket(s3Key, buffer, imageFile.type);
 
       const [updated] = await db
         .update(avatars)
@@ -206,12 +206,12 @@ avatarsRouter.patch('/:id', requireRole('admin'), async (c) => {
     try {
 
       const buffer = Buffer.from(await imageFile.arrayBuffer());
-      const { s3Bucket } = await uploadToAvatarBucket(s3Key, buffer, imageFile.type);
+      const { s3Bucket } = await uploadToAssetsBucket(s3Key, buffer, imageFile.type);
 
       // Delete the old image if it was different
       if (avatar.imageS3Key && avatar.imageS3Key !== s3Key) {
 
-        await deleteFromAvatarBucket(avatar.imageS3Key).catch((err) => {
+        await deleteFromAssetsBucket(avatar.imageS3Key).catch((err) => {
           logger.warn({ err, avatarId: id }, 'Failed to delete old avatar image from S3.');
         });
       }
@@ -264,7 +264,7 @@ avatarsRouter.delete('/:id', requireRole('admin'), async (c) => {
 
   if (avatar.imageS3Key) {
 
-    await deleteFromAvatarBucket(avatar.imageS3Key).catch((err) => {
+    await deleteFromAssetsBucket(avatar.imageS3Key).catch((err) => {
       logger.warn({ err, avatarId: id }, 'Failed to delete avatar image from S3.');
     });
   }

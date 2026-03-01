@@ -51,7 +51,11 @@ export interface UploadResult {
 
 // ─── Internal helpers ──────────────────────────────────────────────────────────
 
-const upload = async (bucket: string, key: string, body: Buffer, mimeType: string): Promise<UploadResult> => {
+interface UploadOptions {
+  cacheControl?: string;
+}
+
+const upload = async (bucket: string, key: string, body: Buffer, mimeType: string, options?: UploadOptions): Promise<UploadResult> => {
 
   const client = getS3Client();
 
@@ -60,6 +64,7 @@ const upload = async (bucket: string, key: string, body: Buffer, mimeType: strin
     Key: key,
     Body: body,
     ContentType: mimeType,
+    ...(options?.cacheControl ? { CacheControl: options.cacheControl } : {}),
   });
 
   await client.send(command);
@@ -111,8 +116,8 @@ export const downloadFromDocsBucket = async (key: string): Promise<Buffer> => {
 
 // ─── Assets bucket (CDN-fronted, public read) ──────────────────────────────────
 
-export const uploadToAssetsBucket = (key: string, body: Buffer, mimeType: string): Promise<UploadResult> =>
-  upload(getAssetsBucketName(), key, body, mimeType)
+export const uploadToAssetsBucket = (key: string, body: Buffer, mimeType: string, options?: UploadOptions): Promise<UploadResult> =>
+  upload(getAssetsBucketName(), key, body, mimeType, options)
 
 export const deleteFromAssetsBucket = (key: string): Promise<void> =>
   remove(getAssetsBucketName(), key)
