@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, and, asc } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { microlearnings, microlearningSequences } from '../db/schema.js';
+import { microlearnings, microlearningSequences, microlearningSequenceAssignments, userGroups } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 
 const microlearningsRouter = new Hono();
@@ -37,6 +37,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
   const auth = c.get('auth');
   const body = await c.req.json<{
     title: string;
+    status?: 'draft' | 'published';
     topicId?: string | null;
     subtopicIds?: string[];
     patternId?: string | null;
@@ -54,6 +55,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
     .values({
       organizationId: auth.organizationId,
       title: body.title.trim(),
+      status: body.status ?? 'draft',
       topicId: body.topicId ?? null,
       subtopicIds: body.subtopicIds ?? [],
       patternId: body.patternId ?? null,
@@ -78,6 +80,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json<{
     title?: string;
+    status?: 'draft' | 'published';
     topicId?: string | null;
     subtopicIds?: string[];
     patternId?: string | null;
@@ -98,6 +101,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
 
   const updates: Partial<typeof existing> = {};
   if (body.title?.trim()) updates.title = body.title.trim();
+  if ('status' in body && body.status) updates.status = body.status;
   if ('topicId' in body) updates.topicId = body.topicId ?? null;
   if ('subtopicIds' in body) updates.subtopicIds = body.subtopicIds ?? [];
   if ('patternId' in body) updates.patternId = body.patternId ?? null;
@@ -302,5 +306,140 @@ microlearningsRouter.put('/sequences/:seqId/reorder', requireRole('admin'), asyn
 
   return c.json({ success: true });
 })
+
+// ─── Sequence assignments ─────────────────────────────────────────────────────
+
+/**
+ * GET /microlearnings/sequences/:seqId/assignments
+ * List groups assigned to a sequence.
+ */
+microlearningsRouter.get('/sequences/:seqId/assignments', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const seqId = c.req.param('seqId');
+
+  const [sequence] = await db
+    .select()
+    .from(microlearningSequences)
+    .where(and(eq(microlearningSequences.id, seqId), eq(microlearningSequences.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!sequence) {
+    return c.json({ error: 'Sequence not found.' }, 404);
+  }
+
+  const assignments = await db
+    .select({
+      id: microlearningSequenceAssignments.id,
+      sequenceId: microlearningSequenceAssignments.sequenceId,
+      groupId: microlearningSequenceAssignments.groupId,
+      createdAt: microlearningSequenceAssignments.createdAt,
+      group: {
+        id: userGroups.id,
+        name: userGroups.name,
+        isAll: userGroups.isAll,
+      },
+    })
+    .from(microlearningSequenceAssignments)
+    .innerJoin(userGroups, eq(userGroups.id, microlearningSequenceAssignments.groupId))
+    .where(eq(microlearningSequenceAssignments.sequenceId, seqId));
+
+  return c.json({ assignments });
+});
+
+/**
+ * POST /microlearnings/sequences/:seqId/assignments
+ * Assign a group to a sequence. Body: { groupId: string }
+ */
+microlearningsRouter.post('/sequences/:seqId/assignments', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const seqId = c.req.param('seqId');
+  const body = await c.req.json<{ groupId: string }>();
+
+  if (!body.groupId) {
+    return c.json({ error: 'groupId is required.' }, 400);
+  }
+
+  const [sequence] = await db
+    .select()
+    .from(microlearningSequences)
+    .where(and(eq(microlearningSequences.id, seqId), eq(microlearningSequences.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!sequence) {
+    return c.json({ error: 'Sequence not found.' }, 404);
+  }
+
+  // Verify group belongs to this org
+  const [group] = await db
+    .select()
+    .from(userGroups)
+    .where(and(eq(userGroups.id, body.groupId), eq(userGroups.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!group) {
+    return c.json({ error: 'Group not found.' }, 404);
+  }
+
+  // Upsert: skip if already assigned
+  const [existing] = await db
+    .select()
+    .from(microlearningSequenceAssignments)
+    .where(
+      and(
+        eq(microlearningSequenceAssignments.sequenceId, seqId),
+        eq(microlearningSequenceAssignments.groupId, body.groupId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    return c.json({ assignment: existing }, 200);
+  }
+
+  const [assignment] = await db
+    .insert(microlearningSequenceAssignments)
+    .values({ sequenceId: seqId, groupId: body.groupId })
+    .returning();
+
+  logger.info({ sequenceId: seqId, groupId: body.groupId }, 'Sequence assignment created.');
+
+  return c.json({ assignment }, 201);
+});
+
+/**
+ * DELETE /microlearnings/sequences/:seqId/assignments/:groupId
+ * Unassign a group from a sequence.
+ */
+microlearningsRouter.delete('/sequences/:seqId/assignments/:groupId', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const seqId = c.req.param('seqId');
+  const groupId = c.req.param('groupId');
+
+  const [sequence] = await db
+    .select()
+    .from(microlearningSequences)
+    .where(and(eq(microlearningSequences.id, seqId), eq(microlearningSequences.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!sequence) {
+    return c.json({ error: 'Sequence not found.' }, 404);
+  }
+
+  await db
+    .delete(microlearningSequenceAssignments)
+    .where(
+      and(
+        eq(microlearningSequenceAssignments.sequenceId, seqId),
+        eq(microlearningSequenceAssignments.groupId, groupId)
+      )
+    );
+
+  logger.info({ sequenceId: seqId, groupId }, 'Sequence assignment deleted.');
+
+  return c.json({ success: true });
+});
 
 export default microlearningsRouter;

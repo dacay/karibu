@@ -4,7 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, and, desc } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { users, authTokens } from '../db/schema.js';
+import { users, authTokens, userGroups, userGroupMembers } from '../db/schema.js';
 import { hashPassword, generateLoginToken } from '../utils/crypto.js';
 import { sendInvitationEmail, buildOrgUrl } from '../services/email.js';
 import { logger } from '../config/logger.js';
@@ -164,6 +164,22 @@ teamRouter.post('/invite', zValidator('json', inviteSchema), async (c) => {
         subdomain: organization.subdomain,
         token,
       });
+
+      // Add user to "All Members" group, creating it first if needed
+      let [allMembersGroup] = await db
+        .select()
+        .from(userGroups)
+        .where(and(eq(userGroups.organizationId, auth.organizationId), eq(userGroups.isAll, true)))
+        .limit(1);
+
+      if (!allMembersGroup) {
+        [allMembersGroup] = await db
+          .insert(userGroups)
+          .values({ organizationId: auth.organizationId, name: 'All Members', isAll: true })
+          .returning();
+      }
+
+      await db.insert(userGroupMembers).values({ groupId: allMembersGroup.id, userId: newUser.id });
 
       invited.push(email);
 

@@ -3,6 +3,9 @@ import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean 
 // Role enum
 export const roleEnum = pgEnum('role', ['admin', 'user']);
 
+// Microlearning status enum
+export const microlearningStatusEnum = pgEnum('microlearning_status', ['draft', 'published']);
+
 // Timestamp helpers
 const timestamps = {
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -77,6 +80,7 @@ export const microlearnings = pgTable('microlearnings', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
+  status: microlearningStatusEnum('status').notNull().default('draft'),
   topicId: uuid('topic_id').references(() => dnaTopics.id, { onDelete: 'set null' }),
   subtopicIds: jsonb('subtopic_ids').$type<string[]>(),
   patternId: uuid('pattern_id').references(() => conversationPatterns.id, { onDelete: 'set null' }),
@@ -86,11 +90,30 @@ export const microlearnings = pgTable('microlearnings', {
   ...timestamps,
 });
 
-// Microlearning sequence assignments table - assigns a sequence to a user
+// User groups table - named cohorts within an organization (e.g. "All Members")
+export const userGroups = pgTable('user_groups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  isAll: boolean('is_all').notNull().default(false),
+  createdAt: timestamps.createdAt,
+}, (table) => [
+  index('user_groups_organization_id_idx').on(table.organizationId),
+]);
+
+// User group members table
+export const userGroupMembers = pgTable('user_group_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  groupId: uuid('group_id').notNull().references(() => userGroups.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamps.createdAt,
+});
+
+// Microlearning sequence assignments table - assigns a sequence to a user group
 export const microlearningSequenceAssignments = pgTable('microlearning_sequence_assignments', {
   id: uuid('id').primaryKey().defaultRandom(),
   sequenceId: uuid('sequence_id').notNull().references(() => microlearningSequences.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  groupId: uuid('group_id').notNull().references(() => userGroups.id, { onDelete: 'cascade' }),
   createdAt: timestamps.createdAt,
 });
 
