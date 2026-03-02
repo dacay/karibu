@@ -165,6 +165,31 @@ export const ELEVENLABS_VOICES: ElevenLabsVoice[] = [
   { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", gender: "male", description: "Raspy, strong" },
 ];
 
+export interface Microlearning {
+  id: string;
+  organizationId: string;
+  title: string;
+  topicId: string | null;
+  subtopicIds: string[] | null;
+  patternId: string | null;
+  avatarId: string | null;
+  sequenceId: string | null;
+  position: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MicrolearningSequence {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  microlearnings: Microlearning[];
+}
+
+
 export interface TeamMember {
   id: string;
   email: string;
@@ -268,6 +293,57 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ success: boolean }>(`/patterns/${id}`, { method: "DELETE" }),
+  },
+  microlearnings: {
+    list: () =>
+      request<{ microlearnings: Microlearning[] }>("/microlearnings"),
+    create: (body: {
+      title: string;
+      topicId?: string | null;
+      subtopicIds?: string[];
+      patternId?: string | null;
+      avatarId?: string | null;
+      sequenceId?: string | null;
+      position?: number | null;
+    }) =>
+      request<{ microlearning: Microlearning }>("/microlearnings", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: {
+      title?: string;
+      topicId?: string | null;
+      subtopicIds?: string[];
+      patternId?: string | null;
+      avatarId?: string | null;
+      sequenceId?: string | null;
+      position?: number | null;
+    }) =>
+      request<{ microlearning: Microlearning }>(`/microlearnings/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/microlearnings/${id}`, { method: "DELETE" }),
+    listSequences: () =>
+      request<{ sequences: MicrolearningSequence[] }>("/microlearnings/sequences"),
+    createSequence: (body: { name: string; description?: string }) =>
+      request<{ sequence: MicrolearningSequence }>("/microlearnings/sequences", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    updateSequence: (id: string, body: { name?: string; description?: string }) =>
+      request<{ sequence: MicrolearningSequence }>(`/microlearnings/sequences/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    deleteSequence: (id: string) =>
+      request<{ success: boolean }>(`/microlearnings/sequences/${id}`, { method: "DELETE" }),
+    reorderSequence: (id: string, microlearningIds: string[]) =>
+      request<{ success: boolean }>(`/microlearnings/sequences/${id}/reorder`, {
+        method: "PUT",
+        body: JSON.stringify({ microlearningIds }),
+      }),
   },
   team: {
     list: () =>
