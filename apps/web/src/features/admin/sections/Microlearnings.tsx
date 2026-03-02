@@ -228,6 +228,7 @@ interface MlRowProps {
   groupId: string;
   dropTarget: { groupId: string; beforeIndex: number } | null;
   isDragging: boolean;
+  isPending: boolean;
   topics: DnaTopic[];
   patterns: ConversationPattern[];
   avatars: Avatar[];
@@ -252,6 +253,7 @@ function MlRow({
   groupId,
   dropTarget,
   isDragging,
+  isPending,
   topics,
   patterns,
   avatars,
@@ -295,17 +297,20 @@ function MlRow({
 
   return (
     <div
-      draggable={!isEditing}
+      draggable={!isEditing && !isPending}
       onDragStart={() => onDragStart(ml.id, groupId)}
       onDragOver={(e) => onDragOver(e, groupId, index)}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
       className={[
         "group flex items-center gap-2 rounded-md border bg-card px-3 py-2.5 transition-opacity",
-        isDragging ? "opacity-40" : "",
+        isDragging || isPending ? "opacity-40" : "",
       ].join(" ")}
     >
-      <GripVertical className="size-4 shrink-0 text-muted-foreground cursor-grab active:cursor-grabbing" />
+      {isPending
+        ? <Spinner className="size-4 shrink-0" />
+        : <GripVertical className="size-4 shrink-0 text-muted-foreground cursor-grab active:cursor-grabbing" />
+      }
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{ml.title}</p>
         {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
@@ -461,9 +466,12 @@ export function MicrolearningsSection() {
     onSuccess: () => invalidate(),
   });
 
+  const pendingMlId = moveMutation.isPending ? moveMutation.variables?.mlId : null;
+
   // ── Drag handlers ──────────────────────────────────────────────────────────
 
   function handleDragStart(mlId: string, fromGroup: string) {
+    if (moveMutation.isPending) return;
     dragRef.current = { mlId, fromGroup };
     setDraggingMlId(mlId);
   }
@@ -694,6 +702,7 @@ export function MicrolearningsSection() {
                         groupId={seq.id}
                         dropTarget={dropTarget}
                         isDragging={draggingMlId === ml.id}
+                        isPending={pendingMlId === ml.id}
                         topics={topics}
                         patterns={patterns}
                         avatars={avatars}
@@ -732,7 +741,11 @@ export function MicrolearningsSection() {
             <Separator />
           )}
 
-          <div>
+          {/* Wrap header + list together so the header area also accepts drops */}
+          <div
+            onDragOver={(e) => handleGroupDragOver(e, UNASSIGNED, unassigned.length)}
+            onDrop={handleDrop}
+          >
             {/* Unassigned header */}
             <div className="flex items-center gap-2 mb-3">
               <BookOpen className="size-4 text-muted-foreground" />
@@ -744,15 +757,18 @@ export function MicrolearningsSection() {
               )}
             </div>
 
-            {/* Unassigned list — also a drop target */}
+            {/* Unassigned list — always has min-height during drag so it's targetable when empty */}
             <div
-              onDragOver={(e) => handleGroupDragOver(e, UNASSIGNED, unassigned.length)}
-              onDrop={handleDrop}
               className={[
                 "space-y-1",
-                draggingMlId && dropTarget?.groupId === UNASSIGNED && unassigned.length === 0
-                  ? "rounded-lg border border-dashed border-primary/50 bg-primary/5 p-2 min-h-12"
+                draggingMlId
+                  ? "min-h-12 rounded-lg border border-dashed p-1.5 transition-colors"
                   : "",
+                draggingMlId && dropTarget?.groupId === UNASSIGNED
+                  ? "border-primary bg-primary/5"
+                  : draggingMlId
+                    ? "border-border"
+                    : "",
               ].join(" ")}
             >
               {unassigned.length === 0 && !draggingMlId && (
@@ -770,6 +786,7 @@ export function MicrolearningsSection() {
                     groupId={UNASSIGNED}
                     dropTarget={dropTarget}
                     isDragging={draggingMlId === ml.id}
+                    isPending={pendingMlId === ml.id}
                     topics={topics}
                     patterns={patterns}
                     avatars={avatars}
