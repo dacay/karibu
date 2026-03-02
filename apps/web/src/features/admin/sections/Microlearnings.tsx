@@ -10,6 +10,9 @@ import {
   GripVertical,
   ListOrdered,
   X,
+  Users,
+  Globe,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +21,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   api,
   type Microlearning,
   type MicrolearningSequence,
   type DnaTopic,
   type ConversationPattern,
   type Avatar,
+  type UserGroup,
+  type SequenceAssignment,
 } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -52,6 +62,115 @@ function metaLine(ml: Microlearning, topics: DnaTopic[], patterns: ConversationP
   if (p) parts.push(p);
   if (a) parts.push(a);
   return parts.join(" · ");
+}
+
+function StatusBadge({ status }: { status: "draft" | "published" }) {
+  if (status === "published") {
+    return (
+      <Badge className="text-xs bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
+        Published
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+      Draft
+    </Badge>
+  );
+}
+
+// ─── Assign popover ───────────────────────────────────────────────────────────
+
+function AssignPopover({ seqId }: { seqId: string }) {
+  const queryClient = useQueryClient();
+
+  const groupsQuery = useQuery({
+    queryKey: ["user-groups"],
+    queryFn: () => api.userGroups.list(),
+  });
+
+  const assignmentsQuery = useQuery({
+    queryKey: ["seq-assignments", seqId],
+    queryFn: () => api.microlearnings.listAssignments(seqId),
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (groupId: string) => api.microlearnings.assign(seqId, groupId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seq-assignments", seqId] }),
+  });
+
+  const unassignMutation = useMutation({
+    mutationFn: (groupId: string) => api.microlearnings.unassign(seqId, groupId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seq-assignments", seqId] }),
+  });
+
+  const groups: UserGroup[] = groupsQuery.data?.groups ?? [];
+  const assignments: SequenceAssignment[] = assignmentsQuery.data?.assignments ?? [];
+  const assignedGroupIds = new Set(assignments.map((a) => a.groupId));
+  const assignedCount = assignments.length;
+
+  function handleToggle(groupId: string) {
+    if (assignedGroupIds.has(groupId)) {
+      unassignMutation.mutate(groupId);
+    } else {
+      assignMutation.mutate(groupId);
+    }
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+        >
+          <Users className="size-3.5" />
+          Assign{assignedCount > 0 ? ` · ${assignedCount}` : ""}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" align="end">
+        <p className="text-xs font-medium mb-2">Assign to groups</p>
+        {groupsQuery.isLoading || assignmentsQuery.isLoading ? (
+          <div className="flex justify-center py-3">
+            <Spinner className="size-4" />
+          </div>
+        ) : groups.length === 0 ? (
+          <p className="text-xs text-muted-foreground py-2">No groups yet. Invite team members to auto-create the All Members group.</p>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {groups.map((group) => {
+              const checked = assignedGroupIds.has(group.id);
+              const isMutating =
+                (assignMutation.isPending && assignMutation.variables === group.id) ||
+                (unassignMutation.isPending && unassignMutation.variables === group.id);
+              return (
+                <label
+                  key={group.id}
+                  className="flex items-center gap-2 cursor-pointer rounded-md p-1.5 hover:bg-muted/50 transition-colors"
+                >
+                  {isMutating ? (
+                    <Spinner className="size-3.5 shrink-0" />
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleToggle(group.id)}
+                      className="rounded border-input"
+                    />
+                  )}
+                  <span className="text-sm flex-1 truncate">{group.name}</span>
+                  {group.isAll && (
+                    <span className="text-xs text-muted-foreground">{group.memberCount}</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 // ─── Styled select ────────────────────────────────────────────────────────────
@@ -243,6 +362,8 @@ interface MlRowProps {
   onCancelEdit: () => void;
   onSaveEdit: (values: MlFormValues) => void;
   isSavingEdit: boolean;
+  onToggleStatus: () => void;
+  isTogglingStatus: boolean;
   onDelete: () => void;
   isDeleting: boolean;
 }
@@ -268,6 +389,8 @@ function MlRow({
   onCancelEdit,
   onSaveEdit,
   isSavingEdit,
+  onToggleStatus,
+  isTogglingStatus,
   onDelete,
   isDeleting,
 }: MlRowProps) {
@@ -312,15 +435,33 @@ function MlRow({
         : <GripVertical className="size-4 shrink-0 text-muted-foreground cursor-grab active:cursor-grabbing" />
       }
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{ml.title}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-medium truncate">{ml.title}</p>
+          <StatusBadge status={ml.status} />
+        </div>
         {meta && <p className="text-xs text-muted-foreground truncate">{meta}</p>}
       </div>
       <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs gap-1"
+          disabled={isTogglingStatus}
+          onClick={onToggleStatus}
+        >
+          {isTogglingStatus
+            ? <Spinner className="size-3 mr-1" />
+            : ml.status === "draft"
+              ? <><Globe className="size-3" /> Publish</>
+              : <><FileText className="size-3" /> Unpublish</>
+          }
+        </Button>
         <Button
           variant="ghost"
           size="icon"
           className="size-7 text-muted-foreground hover:text-foreground"
           onClick={onStartEdit}
+          title="Edit"
           aria-label="Edit"
         >
           <Pencil className="size-3.5" />
@@ -331,6 +472,7 @@ function MlRow({
             size="icon"
             className="size-7 text-muted-foreground hover:text-destructive"
             onClick={onRemoveFromSequence}
+            title="Remove from sequence"
             aria-label="Remove from sequence"
           >
             <X className="size-3.5" />
@@ -342,6 +484,7 @@ function MlRow({
             className="size-7 text-muted-foreground hover:text-destructive"
             disabled={isDeleting}
             onClick={onDelete}
+            title="Delete"
             aria-label="Delete"
           >
             {isDeleting ? <Spinner className="size-3.5" /> : <Trash2 className="size-3.5" />}
@@ -437,6 +580,12 @@ export function MicrolearningsSection() {
 
   const deleteSeqMutation = useMutation({
     mutationFn: (id: string) => api.microlearnings.deleteSequence(id),
+    onSuccess: () => invalidate(),
+  });
+
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "draft" | "published" }) =>
+      api.microlearnings.update(id, { status }),
     onSuccess: () => invalidate(),
   });
 
@@ -649,6 +798,7 @@ export function MicrolearningsSection() {
 
                   {!isEditingSeq && (
                     <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover/seq:opacity-100 transition-opacity">
+                      <AssignPopover seqId={seq.id} />
                       <Button
                         variant="ghost"
                         size="icon"
@@ -725,6 +875,13 @@ export function MicrolearningsSection() {
                         onCancelEdit={() => setEditingMlId(null)}
                         onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
                         isSavingEdit={updateMlMutation.isPending && updateMlMutation.variables?.id === ml.id}
+                        onToggleStatus={() =>
+                          toggleStatusMutation.mutate({
+                            id: ml.id,
+                            status: ml.status === "draft" ? "published" : "draft",
+                          })
+                        }
+                        isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
                         onDelete={() => deleteMlMutation.mutate(ml.id)}
                         isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
                       />
@@ -800,6 +957,13 @@ export function MicrolearningsSection() {
                     onCancelEdit={() => setEditingMlId(null)}
                     onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
                     isSavingEdit={updateMlMutation.isPending && updateMlMutation.variables?.id === ml.id}
+                    onToggleStatus={() =>
+                      toggleStatusMutation.mutate({
+                        id: ml.id,
+                        status: ml.status === "draft" ? "published" : "draft",
+                      })
+                    }
+                    isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
                     onDelete={() => deleteMlMutation.mutate(ml.id)}
                     isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
                   />

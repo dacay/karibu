@@ -169,6 +169,7 @@ export interface Microlearning {
   id: string;
   organizationId: string;
   title: string;
+  status: "draft" | "published";
   topicId: string | null;
   subtopicIds: string[] | null;
   patternId: string | null;
@@ -177,6 +178,23 @@ export interface Microlearning {
   position: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UserGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  isAll: boolean;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface SequenceAssignment {
+  id: string;
+  sequenceId: string;
+  groupId: string;
+  group: { id: string; name: string; isAll: boolean };
+  createdAt: string;
 }
 
 export interface MicrolearningSequence {
@@ -312,6 +330,7 @@ export const api = {
       }),
     update: (id: string, body: {
       title?: string;
+      status?: "draft" | "published";
       topicId?: string | null;
       subtopicIds?: string[];
       patternId?: string | null;
@@ -344,6 +363,40 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ microlearningIds }),
       }),
+    listAssignments: (seqId: string) =>
+      request<{ assignments: SequenceAssignment[] }>(`/microlearnings/sequences/${seqId}/assignments`),
+    assign: (seqId: string, groupId: string) =>
+      request<{ assignment: SequenceAssignment }>(`/microlearnings/sequences/${seqId}/assignments`, {
+        method: "POST",
+        body: JSON.stringify({ groupId }),
+      }),
+    unassign: (seqId: string, groupId: string) =>
+      request<{ success: boolean }>(`/microlearnings/sequences/${seqId}/assignments/${groupId}`, {
+        method: "DELETE",
+      }),
+  },
+  userGroups: {
+    list: () =>
+      request<{ groups: UserGroup[] }>("/user-groups"),
+    create: (body: { name: string }) =>
+      request<{ group: UserGroup }>("/user-groups", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    update: (id: string, body: { name: string }) =>
+      request<{ group: UserGroup }>(`/user-groups/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      request<{ success: boolean }>(`/user-groups/${id}`, { method: "DELETE" }),
+    addMember: (groupId: string, userId: string) =>
+      request<{ added: string[] }>(`/user-groups/${groupId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userIds: [userId] }),
+      }),
+    removeMember: (groupId: string, userId: string) =>
+      request<{ success: boolean }>(`/user-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
   },
   team: {
     list: () =>
