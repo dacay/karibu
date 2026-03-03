@@ -29,6 +29,8 @@ export const users = pgTable('users', {
   phoneNumber: text('phone_number'), // E.164 format (e.g., +14155552671)
   role: roleEnum('role').notNull().default('user'),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  // User's preferred avatar — stored as plain uuid (no FK) to avoid circular reference with avatars table
+  preferredAvatarId: uuid('preferred_avatar_id'),
   ...timestamps,
 });
 
