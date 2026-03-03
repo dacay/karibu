@@ -12,6 +12,7 @@ import org from './org.js';
 import microlearnings from './microlearnings.js';
 import sequences from './sequences.js';
 import userGroups from './user-groups.js';
+import metrics from './metrics.js';
 
 import { organizationMiddleware } from '../middleware/organization.js';
 
@@ -58,4 +59,7 @@ export const registerRoutes = (app: Hono) => {
 
   // User profile and preferences routes
   app.route('/user', userRouter);
+
+  // Metrics routes (admin only)
+  app.route('/metrics', metrics);
 }

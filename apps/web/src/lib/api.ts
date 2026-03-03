@@ -255,6 +255,43 @@ export interface OrgConfig {
   pronunciation: string | null;
 }
 
+export interface DashboardMetrics {
+  usageFrequency: {
+    totalSessions: number;
+    uniqueLearners: number;
+    sessionsPerDay: Array<{ date: string; count: number }>;
+  };
+  sessionDuration: {
+    avgMinutes: number | null;
+    minMinutes: number | null;
+    maxMinutes: number | null;
+  };
+  messagesPerDayPerNurse: Array<{
+    userId: string;
+    email: string;
+    date: string;
+    messageCount: number;
+  }>;
+  returnVisits: {
+    total: number;
+    totalLearners: number;
+    percentOfLearners: number;
+    deltaVsLastMonth: number;
+    thisMonthCount: number;
+    lastMonthCount: number;
+    byMonth: Array<{ month: string; count: number }>;
+  };
+  completionMetrics: {
+    avgMinutes: number | null;
+    minMinutes: number | null;
+    maxMinutes: number | null;
+    avgMessages: number | null;
+    minMessages: number | null;
+    maxMessages: number | null;
+  };
+  completionsThisMonth: number;
+}
+
 // ----- Namespaced API client -----
 
 export const api = {
@@ -468,6 +505,9 @@ export const api = {
       formData.append("file", file);
       return upload<{ success: boolean; key: string }>("/org/logo", formData);
     },
+  },
+  metrics: {
+    get: () => request<DashboardMetrics>("/metrics"),
   },
   avatars: {
     list: () =>
