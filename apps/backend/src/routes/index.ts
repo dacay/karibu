@@ -3,6 +3,7 @@ import health from './health.js';
 import auth from './auth.js';
 import chat from './chat.js';
 import documents from './documents.js';
+import userRouter from './user.js';
 import dna from './dna.js';
 import team from './team.js';
 import patterns from './patterns.js';
@@ -50,4 +51,7 @@ export const registerRoutes = (app: Hono) => {
 
   // User group management routes (admin only)
   app.route('/user-groups', userGroups);
+
+  // User profile and preferences routes
+  app.route('/user', userRouter);
 }
