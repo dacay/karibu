@@ -53,7 +53,7 @@ function PatternForm({
         onChange={(e) => setDescription(e.target.value)}
       />
       <Textarea
-        placeholder="Conversation prompt — describe how the AI should behave, what role it plays, and how it references the DNA source of truth."
+        placeholder="Conversation prompt — describe how the AI should behave, what role it plays, and how it references the Source knowledge."
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         rows={6}

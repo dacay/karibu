@@ -601,9 +601,9 @@ export function DNASection() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">DNA</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Source</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Define your organization's learning DNA through topics, subtopics, and synthesized value statements.
+          Define your organization's knowledge source through topics, subtopics, and synthesized value statements.
         </p>
       </div>
 
@@ -646,7 +646,7 @@ export function DNASection() {
             <CardContent className="p-0 text-center">
               <p className="text-sm font-medium text-muted-foreground">No topics defined yet</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Add your first topic to start building your organization&apos;s DNA.
+                Add your first topic to start building your organization&apos;s knowledge source.
               </p>
               <Button size="sm" className="mt-4" onClick={() => setShowAddTopic(true)}>
                 <Plus className="size-3 mr-1" />

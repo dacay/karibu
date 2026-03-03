@@ -51,7 +51,7 @@ type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns"
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "dna", label: "DNA", icon: Dna },
+  { id: "dna", label: "Source", icon: Dna },
   { id: "microlearnings", label: "Microlearnings", icon: BookOpen },
   { id: "avatars", label: "Avatars", icon: UserCircle },
   { id: "patterns", label: "Patterns", icon: MessageSquare },
