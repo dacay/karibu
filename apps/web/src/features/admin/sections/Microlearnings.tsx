@@ -106,16 +106,16 @@ function AssignPopover({ seqId }: { seqId: string }) {
 
   const assignmentsQuery = useQuery({
     queryKey: ["seq-assignments", seqId],
-    queryFn: () => api.microlearnings.listAssignments(seqId),
+    queryFn: () => api.sequences.listAssignments(seqId),
   });
 
   const assignMutation = useMutation({
-    mutationFn: (groupId: string) => api.microlearnings.assign(seqId, groupId),
+    mutationFn: (groupId: string) => api.sequences.assign(seqId, groupId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seq-assignments", seqId] }),
   });
 
   const unassignMutation = useMutation({
-    mutationFn: (groupId: string) => api.microlearnings.unassign(seqId, groupId),
+    mutationFn: (groupId: string) => api.sequences.unassign(seqId, groupId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["seq-assignments", seqId] }),
   });
 
@@ -264,14 +264,14 @@ function MlForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Topic</label>
-          <NativeSelect value={topicId} onChange={handleTopicChange} placeholder="No topic">
+          <label className="text-xs font-medium text-muted-foreground">Topic <span className="text-destructive">*</span></label>
+          <NativeSelect value={topicId} onChange={handleTopicChange} placeholder="Select topic">
             {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Pattern</label>
-          <NativeSelect value={patternId} onChange={setPatternId} placeholder="No pattern">
+          <label className="text-xs font-medium text-muted-foreground">Pattern <span className="text-destructive">*</span></label>
+          <NativeSelect value={patternId} onChange={setPatternId} placeholder="Select pattern">
             {patterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </NativeSelect>
         </div>
@@ -297,14 +297,14 @@ function MlForm({
       )}
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-muted-foreground">Avatar</label>
-        <NativeSelect value={avatarId} onChange={setAvatarId} placeholder="No avatar">
+        <label className="text-xs font-medium text-muted-foreground">Avatar <span className="text-destructive">*</span></label>
+        <NativeSelect value={avatarId} onChange={setAvatarId} placeholder="Select avatar">
           {avatars.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </NativeSelect>
       </div>
 
       <div className="flex gap-2">
-        <Button size="sm" disabled={!title.trim() || isLoading} onClick={() => onSave({ title, topicId, subtopicIds, patternId, avatarId })}>
+        <Button size="sm" disabled={!title.trim() || !topicId || !patternId || !avatarId || isLoading} onClick={() => onSave({ title, topicId, subtopicIds, patternId, avatarId })}>
           {isLoading ? <Spinner className="size-3 mr-1" /> : null}
           {submitLabel}
         </Button>
@@ -580,7 +580,7 @@ export function MicrolearningsSection() {
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const mlQuery = useQuery({ queryKey: ["microlearnings"], queryFn: () => api.microlearnings.list() });
-  const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.microlearnings.listSequences() });
+  const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.sequences.list() });
   const dnaQuery = useQuery({ queryKey: ["dna"], queryFn: () => api.dna.list() });
   const patternsQuery = useQuery({ queryKey: ["patterns"], queryFn: () => api.patterns.list() });
   const avatarsQuery = useQuery({ queryKey: ["avatars"], queryFn: () => api.avatars.list() });
@@ -632,18 +632,18 @@ export function MicrolearningsSection() {
   });
 
   const createSeqMutation = useMutation({
-    mutationFn: (v: { name: string; description: string }) => api.microlearnings.createSequence(v),
+    mutationFn: (v: { name: string; description: string }) => api.sequences.create(v),
     onSuccess: () => { invalidate(); setCreatingSeq(false); },
   });
 
   const updateSeqMutation = useMutation({
     mutationFn: ({ id, v }: { id: string; v: { name: string; description: string } }) =>
-      api.microlearnings.updateSequence(id, v),
+      api.sequences.update(id, v),
     onSuccess: () => { invalidate(); setEditingSeqId(null); },
   });
 
   const deleteSeqMutation = useMutation({
-    mutationFn: (id: string) => api.microlearnings.deleteSequence(id),
+    mutationFn: (id: string) => api.sequences.delete(id),
     onSuccess: () => invalidate(),
   });
 
@@ -670,10 +670,10 @@ export function MicrolearningsSection() {
       if (toGroup === UNASSIGNED) {
         await api.microlearnings.update(mlId, { sequenceId: null, position: null });
       } else {
-        await api.microlearnings.reorderSequence(toGroup, newTargetOrder);
+        await api.sequences.reorder(toGroup, newTargetOrder);
       }
       if (newSourceOrder !== null && fromGroup !== UNASSIGNED) {
-        await api.microlearnings.reorderSequence(fromGroup, newSourceOrder);
+        await api.sequences.reorder(fromGroup, newSourceOrder);
       }
     },
     onSuccess: () => invalidate(),
