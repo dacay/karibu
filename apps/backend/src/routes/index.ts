@@ -10,6 +10,7 @@ import patterns from './patterns.js';
 import avatarsRouter from './avatars.js';
 import org from './org.js';
 import microlearnings from './microlearnings.js';
+import sequences from './sequences.js';
 import userGroups from './user-groups.js';
 
 import { organizationMiddleware } from '../middleware/organization.js';
@@ -46,8 +47,11 @@ export const registerRoutes = (app: Hono) => {
   // Organization config routes (admin only)
   app.route('/org', org);
 
-  // Microlearning and sequence routes (admin only)
+  // Microlearning routes
   app.route('/microlearnings', microlearnings);
+
+  // Sequence routes
+  app.route('/sequences', sequences);
 
   // User group management routes (admin only)
   app.route('/user-groups', userGroups);
