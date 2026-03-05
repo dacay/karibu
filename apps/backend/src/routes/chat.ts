@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import {
   streamText,
+  stepCountIs,
   type UIMessage,
+  type ToolSet,
   createIdGenerator,
   convertToModelMessages,
   experimental_generateSpeech as generateSpeech,
@@ -275,58 +277,70 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   // Track whether the ML was completed during this request
   let justCompleted = false;
 
-  const completionTool = isCompleted ? {} : {
-    markLearningComplete: {
-      description: 'Call this tool when ALL learning objectives have been covered and the learner demonstrates sufficient understanding. This marks the microlearning as completed.',
-      inputSchema: z.object({
-        summary: z.string().describe('Brief summary of what the learner covered and demonstrated understanding of'),
-      }),
-      execute: async ({ summary }: { summary: string }) => {
-        try {
-          await db
-            .update(microlearningProgress)
-            .set({ status: 'completed', completedAt: new Date() })
-            .where(and(
-              eq(microlearningProgress.userId, auth.userId),
-              eq(microlearningProgress.microlearningId, microlearningId),
-            ));
-
-          justCompleted = true;
-          logger.info({ userId: auth.userId, microlearningId }, 'Microlearning marked as completed.');
-
-          return `Great work! ${summary}`;
-        } catch (err) {
-          logger.error({ err, userId: auth.userId, microlearningId }, 'Failed to mark ML as completed.');
-          return 'Unable to record completion at this time.';
-        }
-      },
+  const searchKnowledgeTool = {
+    description: 'Search the organizational knowledge base for additional context relevant to the learner\'s questions.',
+    inputSchema: z.object({
+      query: z.string().describe('Search query to find relevant organizational knowledge'),
+    }),
+    execute: async ({ query }: { query: string }) => {
+      try {
+        const results = await queryDocuments(query, auth.organizationId, 5);
+        const docs = results.documents.filter(Boolean) as string[];
+        if (docs.length === 0) return 'No additional relevant information found.';
+        return docs.join('\n\n');
+      } catch (err) {
+        logger.warn({ err }, 'Vector search failed during ML chat.');
+        return 'Knowledge search unavailable.';
+      }
     },
   };
+
+  const tools: ToolSet = isCompleted
+    ? { searchKnowledge: searchKnowledgeTool }
+    : {
+        searchKnowledge: searchKnowledgeTool,
+        markLearningComplete: {
+          description: 'Call this tool when ALL learning objectives have been covered and the learner demonstrates sufficient understanding. This marks the microlearning as completed.',
+          inputSchema: z.object({
+            summary: z.string().describe('Brief summary of what the learner covered and demonstrated understanding of'),
+          }),
+          execute: async ({ summary }: { summary: string }) => {
+            try {
+              await db
+                .update(microlearningProgress)
+                .set({ status: 'completed', completedAt: new Date() })
+                .where(and(
+                  eq(microlearningProgress.userId, auth.userId),
+                  eq(microlearningProgress.microlearningId, microlearningId),
+                ));
+
+              justCompleted = true;
+              logger.info({ userId: auth.userId, microlearningId }, 'Microlearning marked as completed.');
+
+              return `Great work! ${summary}`;
+            } catch (err) {
+              logger.error({ err, userId: auth.userId, microlearningId }, 'Failed to mark ML as completed.');
+              return 'Unable to record completion at this time.';
+            }
+          },
+        },
+      };
 
   const result = streamText({
     model: openai('gpt-4o'),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
-    maxSteps: 3,
-    tools: {
-      searchKnowledge: {
-        description: 'Search the organizational knowledge base for additional context relevant to the learner\'s questions.',
-        inputSchema: z.object({
-          query: z.string().describe('Search query to find relevant organizational knowledge'),
-        }),
-        execute: async ({ query }: { query: string }) => {
-          try {
-            const results = await queryDocuments(query, auth.organizationId, 5);
-            const docs = results.documents.filter(Boolean) as string[];
-            if (docs.length === 0) return 'No additional relevant information found.';
-            return docs.join('\n\n');
-          } catch (err) {
-            logger.warn({ err }, 'Vector search failed during ML chat.');
-            return 'Knowledge search unavailable.';
-          }
-        },
-      },
-      ...completionTool,
+    stopWhen: stepCountIs(3),
+    tools,
+  });
+
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+    messageMetadata: ({ part }) => {
+      if (part.type === 'finish' && justCompleted) {
+        return { mlCompleted: true };
+      }
     },
     onFinish: ({ messages: updatedMessages }) => {
       saveChat({
@@ -339,16 +353,6 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       }).catch((err) => {
         logger.error({ err, chatId }, 'Failed to persist ML chat after stream finish.');
       });
-    },
-  });
-
-  return result.toUIMessageStreamResponse({
-    originalMessages: messages,
-    generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
-    messageMetadata: ({ part }) => {
-      if (part.type === 'finish' && justCompleted) {
-        return { mlCompleted: true };
-      }
     },
   });
 });
@@ -381,7 +385,7 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
     model: openai('gpt-4o'),
     system: ASSISTANT_SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    maxSteps: 2,
+    stopWhen: stepCountIs(2),
     tools: {
       searchKnowledge: {
         description: 'Search the organizational knowledge base for information relevant to the user\'s question.',
@@ -401,6 +405,11 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
         },
       },
     },
+  });
+
+  return result.toUIMessageStreamResponse({
+    originalMessages: messages,
+    generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
     onFinish: ({ messages: updatedMessages }) => {
       saveChat({
         chatId,
@@ -412,11 +421,6 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
         logger.error({ error, chatId }, 'Failed to persist assistant chat after stream finish.');
       });
     },
-  });
-
-  return result.toUIMessageStreamResponse({
-    originalMessages: messages,
-    generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
   });
 });
 
@@ -449,7 +453,7 @@ chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
       voice: voiceId,
     });
 
-    return new Response(result.audio.uint8Array, {
+    return new Response(result.audio.uint8Array.buffer as ArrayBuffer, {
       headers: {
         'Content-Type': 'audio/mpeg',
         'Cache-Control': 'no-store',
