@@ -54,7 +54,7 @@ export function ChatInterface({
       api: endpoint,
       headers: () => {
         const token = getToken();
-        return token ? { Authorization: `Bearer ${token}` } : {};
+        return token ? { Authorization: `Bearer ${token}` } : ({} as Record<string, string>);
       },
       body: {
         chatId,
