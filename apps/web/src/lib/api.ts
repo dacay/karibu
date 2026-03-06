@@ -1,4 +1,4 @@
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const template = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   if (!template.includes("{subdomain}") || typeof window === "undefined") return template;
   const subdomain = window.location.hostname.split(".")[0];
