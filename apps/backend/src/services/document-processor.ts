@@ -17,7 +17,7 @@ export const extractText = async (buffer: Buffer, mimeType: string): Promise<str
   switch (mimeType) {
     case 'application/pdf': {
       const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-      pdfjs.GlobalWorkerOptions.workerSrc = '';
+      pdfjs.GlobalWorkerOptions.workerSrc = import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
       const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(buffer),
         useWorkerFetch: false,
