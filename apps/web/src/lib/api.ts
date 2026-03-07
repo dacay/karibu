@@ -7,7 +7,7 @@ export function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
-function getToken(): string | null {
+export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("karibu_token");
 }
@@ -202,6 +202,18 @@ export interface MicrolearningWithDetails extends Microlearning {
   topic: { id: string; name: string } | null;
   progress: MicrolearningProgress | null;
 }
+
+export interface LearnerFeedML extends MicrolearningWithDetails {
+  sequenceName: string | null;
+}
+
+export interface LearnerFeed {
+  active: LearnerFeedML[];
+  archive: LearnerFeedML[];
+}
+
+// Inactivity window (must match backend INACTIVITY_WINDOW_MS)
+export const INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000;
 
 export interface UserProfile {
   id: string;
@@ -517,6 +529,9 @@ export const api = {
   },
   metrics: {
     get: () => request<DashboardMetrics>("/metrics"),
+  },
+  learner: {
+    feed: () => request<LearnerFeed>("/microlearnings/feed"),
   },
   avatars: {
     list: () =>
