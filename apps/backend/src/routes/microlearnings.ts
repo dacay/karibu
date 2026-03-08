@@ -381,7 +381,7 @@ microlearningsRouter.get('/:id', async (c) => {
     : [null];
 
   // Fetch current user's progress
-  const [progress] = await db
+  let [progress] = await db
     .select()
     .from(microlearningProgress)
     .where(and(
@@ -389,6 +389,17 @@ microlearningsRouter.get('/:id', async (c) => {
       eq(microlearningProgress.microlearningId, id),
     ))
     .limit(1);
+
+  // For learners: mark the ML as opened the moment the page is accessed.
+  // Only create progress if none exists yet — never modify completed or expired records.
+  if (auth.role !== 'admin' && ml.status === 'published' && !progress) {
+    const [created] = await db
+      .insert(microlearningProgress)
+      .values({ userId: auth.userId, microlearningId: id, status: 'active', openedAt: new Date() })
+      .onConflictDoNothing()
+      .returning();
+    if (created) progress = created;
+  }
 
   return c.json({
     microlearning: {
