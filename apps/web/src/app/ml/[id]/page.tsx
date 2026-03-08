@@ -30,6 +30,7 @@ import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
 import { api, type Avatar as AvatarType } from "@/lib/api";
 import type { ChatAvatar } from "@/features/chat";
+import type { UIMessage } from "ai";
 
 const ASSETS_CDN_BASE = process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? "https://cdn.karibu.ai";
 
@@ -68,8 +69,9 @@ export default function MicrolearningChatPage() {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
 
-  // Stable chatId for this session
-  const chatId = useRef(crypto.randomUUID()).current;
+  // Resolved chatId + prior messages — set once when the session loads
+  const chatIdRef = useRef<string | null>(null);
+  const initialMessagesRef = useRef<UIMessage[]>([]);
 
   const [isCompleted, setIsCompleted] = useState(false);
 
@@ -79,6 +81,23 @@ export default function MicrolearningChatPage() {
     queryFn: () => api.microlearnings.getById(id),
     enabled: !!id && !!user,
   });
+
+  // Load previous chat session (chatId + messages) for this ML
+  const { data: sessionData, isLoading: sessionLoading } = useQuery({
+    queryKey: ["chat", "ml", id],
+    queryFn: () => api.chat.loadMLSession(id),
+    enabled: !!id && !!user,
+    staleTime: Infinity, // messages are loaded once; live updates come via the chat stream
+  });
+
+  // Resolve chatId: use existing one if found, otherwise generate a stable new one
+  if (!chatIdRef.current) {
+    if (sessionData) {
+      chatIdRef.current = sessionData.chatId ?? crypto.randomUUID();
+      initialMessagesRef.current = (sessionData.messages as UIMessage[]) ?? [];
+    }
+  }
+  const chatId = chatIdRef.current ?? crypto.randomUUID();
 
   // Load user profile (for preferred avatar — only for non-admin users)
   const { data: profileData } = useQuery({
@@ -142,11 +161,13 @@ export default function MicrolearningChatPage() {
     setIsCompleted(true);
     queryClient.invalidateQueries({ queryKey: ["ml", id] });
     queryClient.invalidateQueries({ queryKey: ["microlearnings", "my"] });
+    queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
+    queryClient.invalidateQueries({ queryKey: ["chat", "ml", id] });
   }, [queryClient, id]);
 
   const initials = user?.email ? getInitials(user.email) : "?";
 
-  if (authLoading || mlLoading) {
+  if (authLoading || mlLoading || sessionLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner className="size-8" />
@@ -272,6 +293,7 @@ export default function MicrolearningChatPage() {
         <ChatInterface
           endpoint={CHAT_ENDPOINTS.ml}
           chatId={chatId}
+          initialMessages={initialMessagesRef.current}
           microlearningId={id}
           avatar={effectiveAvatar}
           autoPlayVoice={false}

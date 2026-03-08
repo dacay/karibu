@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { Keyboard, Mic, CheckCircle2 } from "lucide-react";
+import { Keyboard, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { ChatAgentAvatar } from "./ChatAgentAvatar";
@@ -30,6 +29,7 @@ function extractText(message: UIMessage): string {
 export function ChatInterface({
   endpoint,
   chatId,
+  initialMessages,
   microlearningId,
   avatar,
   autoPlayVoice = false,
@@ -50,6 +50,7 @@ export function ChatInterface({
 
   const { messages, sendMessage, status } = useChat({
     id: chatId,
+    messages: initialMessages,
     transport: new DefaultChatTransport({
       api: endpoint,
       headers: () => {
@@ -215,12 +216,6 @@ export function ChatInterface({
             <p className="text-xs text-muted-foreground">Speaking...</p>
           )}
         </div>
-        {isCompleted && (
-          <Badge variant="outline" className="shrink-0 gap-1 border-green-500 text-green-600">
-            <CheckCircle2 className="size-3" />
-            Completed
-          </Badge>
-        )}
         <Button
           type="button"
           variant={mode === "voice" ? "default" : "outline"}

@@ -7,6 +7,8 @@ export interface ChatAvatar {
 export interface ChatConfig {
   endpoint: string;
   chatId: string;
+  /** Pre-loaded messages from a previous session */
+  initialMessages?: import("ai").UIMessage[];
   /** When set, sent in the request body so the backend can load ML context */
   microlearningId?: string;
   avatar?: ChatAvatar;
