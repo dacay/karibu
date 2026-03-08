@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfetti } from "@/hooks/useConfetti";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,7 @@ export default function MicrolearningChatPage() {
   const initialMessagesRef = useRef<UIMessage[]>([]);
 
   const [isCompleted, setIsCompleted] = useState(false);
+  const { fire: fireConfetti } = useConfetti();
 
   // Load ML details
   const { data: mlData, isLoading: mlLoading } = useQuery({
@@ -170,11 +172,12 @@ export default function MicrolearningChatPage() {
 
   const handleComplete = useCallback(() => {
     setIsCompleted(true);
+    fireConfetti();
     queryClient.invalidateQueries({ queryKey: ["ml", id] });
     queryClient.invalidateQueries({ queryKey: ["microlearnings", "my"] });
     queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
     queryClient.invalidateQueries({ queryKey: ["chat", "ml", id] });
-  }, [queryClient, id]);
+  }, [queryClient, id, fireConfetti]);
 
   const initials = user?.email ? getInitials(user.email) : "?";
 
