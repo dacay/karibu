@@ -82,13 +82,25 @@ export default function MicrolearningChatPage() {
     enabled: !!id && !!user,
   });
 
-  // Load previous chat session (chatId + messages) for this ML
+  // Load previous chat session (chatId + messages) for this ML.
+  // gcTime: 0 clears the cache on unmount so each visit fetches fresh data.
+  // staleTime: Infinity prevents background refetches while the page is open.
   const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ["chat", "ml", id],
     queryFn: () => api.chat.loadMLSession(id),
     enabled: !!id && !!user,
-    staleTime: Infinity, // messages are loaded once; live updates come via the chat stream
+    staleTime: Infinity,
+    gcTime: 0,
   });
+
+  // Invalidate the learner feed on unmount so "In Progress" is visible when
+  // the user navigates back, without waiting for a manual refresh.
+  useEffect(() => {
+    return () => {
+      queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Resolve chatId: use existing one if found, otherwise generate a stable new one
   if (!chatIdRef.current) {
