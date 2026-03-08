@@ -17,7 +17,7 @@ import { broadcastFeedUpdate } from './learner-sse.js';
 
 // Inactivity window after which an active ML is considered expired.
 // Adjust as needed; future work could make this per-org configurable.
-const INACTIVITY_WINDOW_MS = 120 * 1000; // 8 hours
+const INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 const microlearningsRouter = new Hono();
 

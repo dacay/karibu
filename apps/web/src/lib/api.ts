@@ -213,7 +213,7 @@ export interface LearnerFeed {
 }
 
 // Inactivity window (must match backend INACTIVITY_WINDOW_MS)
-export const INACTIVITY_WINDOW_MS = 120 * 1000;
+export const INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 export interface UserProfile {
   id: string;
