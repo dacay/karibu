@@ -255,7 +255,7 @@ microlearningsRouter.get('/feed', async (c) => {
   const archive: ReturnType<typeof buildItem>[] = [];
 
   // Group sequence MLs by sequenceId (order of sequenceIds preserves assignment order)
-  const mlsBySequence = new Map<string, typeof seqMLs>();
+  const mlsBySequence = new Map<string, typeof allMLs>();
   for (const ml of seqMLs) {
     if (!mlsBySequence.has(ml.sequenceId!)) mlsBySequence.set(ml.sequenceId!, []);
     mlsBySequence.get(ml.sequenceId!)!.push(ml);
