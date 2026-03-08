@@ -13,6 +13,7 @@ import microlearnings from './microlearnings.js';
 import sequences from './sequences.js';
 import userGroups from './user-groups.js';
 import metrics from './metrics.js';
+import learnerSSE from './learner-sse.js';
 
 import { organizationMiddleware } from '../middleware/organization.js';
 
@@ -62,4 +63,7 @@ export const registerRoutes = (app: Hono) => {
 
   // Metrics routes (admin only)
   app.route('/metrics', metrics);
+
+  // Learner SSE stream (real-time feed updates)
+  app.route('/learner', learnerSSE);
 }

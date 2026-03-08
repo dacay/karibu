@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import {
   microlearnings,
+  microlearningSequences,
   microlearningSequenceAssignments,
   microlearningProgress,
   userGroups,
@@ -12,6 +13,11 @@ import {
   dnaTopics,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
+import { broadcastFeedUpdate } from './learner-sse.js';
+
+// Inactivity window after which an active ML is considered expired.
+// Adjust as needed; future work could make this per-org configurable.
+const INACTIVITY_WINDOW_MS = 120 * 1000; // 8 hours
 
 const microlearningsRouter = new Hono();
 
@@ -105,6 +111,180 @@ microlearningsRouter.get('/my', async (c) => {
   }));
 
   return c.json({ microlearnings: result });
+});
+
+/**
+ * GET /microlearnings/feed
+ * Structured learner feed: active (next per sequence + standalones) and archive
+ * (completed/expired). Applies lazy expiry to stale active progress records.
+ */
+microlearningsRouter.get('/feed', async (c) => {
+
+  const auth = c.get('auth');
+
+  // ── 1. Resolve the user's group memberships ────────────────────────────────
+
+  const groupMemberships = await db
+    .select({ groupId: userGroupMembers.groupId })
+    .from(userGroupMembers)
+    .where(eq(userGroupMembers.userId, auth.userId));
+
+  const isAllGroups = await db
+    .select({ id: userGroups.id })
+    .from(userGroups)
+    .where(and(
+      eq(userGroups.organizationId, auth.organizationId),
+      eq(userGroups.isAll, true),
+    ));
+
+  const relevantGroupIds = [
+    ...new Set([
+      ...groupMemberships.map((m) => m.groupId),
+      ...isAllGroups.map((g) => g.id),
+    ]),
+  ];
+
+  if (relevantGroupIds.length === 0) {
+    return c.json({ active: [], archive: [] });
+  }
+
+  // ── 2. Find assigned sequences ─────────────────────────────────────────────
+
+  const assignments = await db
+    .select({ sequenceId: microlearningSequenceAssignments.sequenceId })
+    .from(microlearningSequenceAssignments)
+    .where(inArray(microlearningSequenceAssignments.groupId, relevantGroupIds));
+
+  const sequenceIds = [...new Set(assignments.map((a) => a.sequenceId))];
+
+  // ── 3. Fetch published MLs in assigned sequences + standalones ─────────────
+
+  const [seqMLs, standaloneMLs] = await Promise.all([
+    sequenceIds.length > 0
+      ? db.select()
+          .from(microlearnings)
+          .where(and(
+            inArray(microlearnings.sequenceId, sequenceIds),
+            eq(microlearnings.status, 'published'),
+            eq(microlearnings.organizationId, auth.organizationId),
+          ))
+          .orderBy(asc(microlearnings.sequenceId), asc(microlearnings.position))
+      : Promise.resolve([]),
+    db.select()
+      .from(microlearnings)
+      .where(and(
+        eq(microlearnings.organizationId, auth.organizationId),
+        eq(microlearnings.status, 'published'),
+        isNull(microlearnings.sequenceId),
+      ))
+      .orderBy(asc(microlearnings.createdAt)),
+  ]);
+
+  const allMLs = [...seqMLs, ...standaloneMLs];
+  if (allMLs.length === 0) {
+    return c.json({ active: [], archive: [] });
+  }
+
+  // ── 4. Load progress for all MLs ──────────────────────────────────────────
+
+  const allMlIds = allMLs.map((m) => m.id);
+  const progressRows = await db
+    .select()
+    .from(microlearningProgress)
+    .where(and(
+      eq(microlearningProgress.userId, auth.userId),
+      inArray(microlearningProgress.microlearningId, allMlIds),
+    ));
+
+  const progressMap = new Map(progressRows.map((p) => [p.microlearningId, p]));
+
+  // ── 5. Lazy expiry: update stale active records ────────────────────────────
+
+  const now = Date.now();
+  const toExpire = progressRows.filter(
+    (p) => p.status === 'active' && now - new Date(p.openedAt).getTime() > INACTIVITY_WINDOW_MS,
+  );
+
+  if (toExpire.length > 0) {
+    const expiredAt = new Date();
+    await db
+      .update(microlearningProgress)
+      .set({ status: 'expired', expiredAt })
+      .where(inArray(microlearningProgress.id, toExpire.map((p) => p.id)));
+
+    for (const p of toExpire) {
+      progressMap.set(p.microlearningId, { ...p, status: 'expired', expiredAt });
+    }
+  }
+
+  // ── 6. Fetch supporting data (avatars, topics, sequence names) ─────────────
+
+  const avatarIds = [...new Set(allMLs.map((m) => m.avatarId).filter(Boolean))] as string[];
+  const topicIds = [...new Set(allMLs.map((m) => m.topicId).filter(Boolean))] as string[];
+
+  const [avatarRows, topicRows, seqNameRows] = await Promise.all([
+    avatarIds.length > 0
+      ? db.select().from(avatars).where(inArray(avatars.id, avatarIds))
+      : Promise.resolve([]),
+    topicIds.length > 0
+      ? db.select({ id: dnaTopics.id, name: dnaTopics.name })
+          .from(dnaTopics)
+          .where(inArray(dnaTopics.id, topicIds))
+      : Promise.resolve([]),
+    sequenceIds.length > 0
+      ? db.select({ id: microlearningSequences.id, name: microlearningSequences.name })
+          .from(microlearningSequences)
+          .where(inArray(microlearningSequences.id, sequenceIds))
+      : Promise.resolve([]),
+  ]);
+
+  const seqNameMap = new Map(seqNameRows.map((s) => [s.id, s.name]));
+
+  // Helper to assemble a full ML detail object
+  const buildItem = (ml: typeof allMLs[0], sequenceName: string | null) => ({
+    ...ml,
+    avatar: avatarRows.find((a) => a.id === ml.avatarId) ?? null,
+    topic: topicRows.find((t) => t.id === ml.topicId) ?? null,
+    progress: progressMap.get(ml.id) ?? null,
+    sequenceName,
+  });
+
+  // ── 7. Classify MLs: active vs archive ────────────────────────────────────
+
+  const active: ReturnType<typeof buildItem>[] = [];
+  const archive: ReturnType<typeof buildItem>[] = [];
+
+  // Group sequence MLs by sequenceId (order of sequenceIds preserves assignment order)
+  const mlsBySequence = new Map<string, typeof seqMLs>();
+  for (const ml of seqMLs) {
+    if (!mlsBySequence.has(ml.sequenceId!)) mlsBySequence.set(ml.sequenceId!, []);
+    mlsBySequence.get(ml.sequenceId!)!.push(ml);
+  }
+
+  for (const seqId of sequenceIds) {
+    const mls = mlsBySequence.get(seqId) ?? [];
+    const seqName = seqNameMap.get(seqId) ?? null;
+
+    for (const ml of mls) {
+      const progress = progressMap.get(ml.id) ?? null;
+
+      if (progress === null || progress.status === 'active') {
+        // First uncompleted/unexpired ML in this sequence → the current active one
+        active.push(buildItem(ml, seqName));
+        break; // strictly sequential: hide all subsequent MLs in this sequence
+      } else {
+        // completed or expired → goes to archive
+        archive.push(buildItem(ml, seqName));
+      }
+    }
+  }
+
+  // Standalone (on-demand) MLs: always active, never archived
+  for (const ml of standaloneMLs) {
+    active.push(buildItem(ml, null));
+  }
+
+  return c.json({ active, archive });
 });
 
 // ─── Dynamic routes ────────────────────────────────────────────────────────────
@@ -336,6 +516,11 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
     .returning();
 
   logger.info({ microlearningId: id, organizationId: auth.organizationId }, 'Microlearning updated.');
+
+  // Notify connected learners when an ML is published
+  if (body.status === 'published') {
+    broadcastFeedUpdate(auth.organizationId);
+  }
 
   return c.json({ microlearning: updated });
 })

@@ -14,7 +14,7 @@ import { zValidator } from '@hono/zod-validator';
 import { eq, and, inArray } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import { openai, elevenlabs } from '../ai/mastra.js';
-import { saveChat } from '../services/chat.js';
+import { saveChat, loadChat } from '../services/chat.js';
 import { queryDocuments } from '../services/chromadb.js';
 import { db } from '../db/index.js';
 import {
@@ -27,6 +27,7 @@ import {
   userGroupMembers,
   userGroups,
   microlearningSequenceAssignments,
+  chats,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -101,6 +102,38 @@ Guidelines:
 - Guide the learner through all objectives in a natural back-and-forth flow.
 - Give encouraging, specific feedback on their answers, then continue to the next concept.
 - The entire session should feel complete within roughly 5 minutes of interaction.`;
+
+// ─── GET /chat/ml/:microlearningId ─────────────────────────────────────────────
+
+/**
+ * GET /chat/ml/:microlearningId
+ * Load the existing chat (id + messages) for the current user and a given ML.
+ * Returns null chatId and empty messages if no prior conversation exists.
+ */
+chat.get('/ml/:microlearningId', async (c) => {
+
+  const auth = c.get('auth');
+  const microlearningId = c.req.param('microlearningId');
+
+  const [existing] = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(and(
+      eq(chats.userId, auth.userId),
+      eq(chats.microlearningId, microlearningId),
+      eq(chats.type, 'microlearning'),
+    ))
+    .orderBy(chats.updatedAt)
+    .limit(1);
+
+  if (!existing) {
+    return c.json({ chatId: null, messages: [] });
+  }
+
+  const messages = await loadChat(existing.id);
+
+  return c.json({ chatId: existing.id, messages });
+});
 
 // ─── POST /chat/ml ─────────────────────────────────────────────────────────────
 
