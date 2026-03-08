@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, CheckCircle, AlertCircle, Building2 } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Building2, Timer } from "lucide-react";
 import Image from "next/image";
 import { api, type OrgConfig } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
@@ -142,6 +142,7 @@ export function OrganizationSection() {
   const [pronunciation, setPronunciation] = useState("");
   const [learnerTerm, setLearnerTerm] = useState("user");
   const [learnerTermPlural, setLearnerTermPlural] = useState("users");
+  const [expirationIntervalHours, setExpirationIntervalHours] = useState(8);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
@@ -150,11 +151,12 @@ export function OrganizationSection() {
       setPronunciation(config.pronunciation ?? "");
       setLearnerTerm(config.learnerTerm);
       setLearnerTermPlural(config.learnerTermPlural);
+      setExpirationIntervalHours(config.expirationIntervalHours);
     }
   }, [config]);
 
   const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string }) =>
+    mutationFn: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number }) =>
       api.org.updateConfig(body),
     onMutate: () => setSaveStatus("saving"),
     onSuccess: (updated) => {
@@ -174,6 +176,7 @@ export function OrganizationSection() {
       pronunciation: pronunciation.trim() || null,
       learnerTerm: learnerTerm.trim() || "user",
       learnerTermPlural: learnerTermPlural.trim() || "users",
+      expirationIntervalHours,
     });
   }
 
@@ -181,7 +184,8 @@ export function OrganizationSection() {
     name !== (config?.name ?? "") ||
     pronunciation !== (config?.pronunciation ?? "") ||
     learnerTerm !== (config?.learnerTerm ?? "user") ||
-    learnerTermPlural !== (config?.learnerTermPlural ?? "users");
+    learnerTermPlural !== (config?.learnerTermPlural ?? "users") ||
+    expirationIntervalHours !== (config?.expirationIntervalHours ?? 8);
 
   return (
     <div className="space-y-6">
@@ -305,6 +309,65 @@ export function OrganizationSection() {
             <CardContent className="space-y-4">
               <LogoUpload variant="light" subdomain={subdomain} />
               <LogoUpload variant="dark" subdomain={subdomain} />
+            </CardContent>
+          </Card>
+
+          {/* Session settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Timer className="size-4" />
+                Session settings
+              </CardTitle>
+              <CardDescription>
+                Control how long learners have to complete a microlearning before it expires.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="expiration-interval">Expiration window (hours)</Label>
+                <Input
+                  id="expiration-interval"
+                  type="number"
+                  min={1}
+                  max={720}
+                  value={expirationIntervalHours}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 720) {
+                      setExpirationIntervalHours(val);
+                    }
+                  }}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground">
+                  An active microlearning expires if not completed within this many hours of being opened (1–720).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  onClick={handleSave}
+                  disabled={!isDirty || saveStatus === "saving"}
+                  size="sm"
+                >
+                  {saveStatus === "saving" && <Spinner className="mr-1.5" />}
+                  {saveStatus === "saving" ? "Saving..." : "Save changes"}
+                </Button>
+
+                {saveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-sm text-green-600">
+                    <CheckCircle className="size-3.5" />
+                    Saved.
+                  </span>
+                )}
+                {saveStatus === "error" && (
+                  <span className="flex items-center gap-1 text-sm text-destructive">
+                    <AlertCircle className="size-3.5" />
+                    Failed to save.
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

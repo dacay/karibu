@@ -11,13 +11,10 @@ import {
   userGroupMembers,
   avatars,
   dnaTopics,
+  organizations,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { broadcastFeedUpdate } from './learner-sse.js';
-
-// Inactivity window after which an active ML is considered expired.
-// Adjust as needed; future work could make this per-org configurable.
-const INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 const microlearningsRouter = new Hono();
 
@@ -122,6 +119,16 @@ microlearningsRouter.get('/feed', async (c) => {
 
   const auth = c.get('auth');
 
+  // ── 0. Fetch org expiration interval ──────────────────────────────────────
+
+  const [org] = await db
+    .select({ expirationIntervalHours: organizations.expirationIntervalHours })
+    .from(organizations)
+    .where(eq(organizations.id, auth.organizationId))
+    .limit(1);
+
+  const expirationIntervalMs = (org?.expirationIntervalHours ?? 8) * 60 * 60 * 1000;
+
   // ── 1. Resolve the user's group memberships ────────────────────────────────
 
   const groupMemberships = await db
@@ -202,7 +209,7 @@ microlearningsRouter.get('/feed', async (c) => {
 
   const now = Date.now();
   const toExpire = progressRows.filter(
-    (p) => p.status === 'active' && now - new Date(p.openedAt).getTime() > INACTIVITY_WINDOW_MS,
+    (p) => p.status === 'active' && now - new Date(p.openedAt).getTime() > expirationIntervalMs,
   );
 
   if (toExpire.length > 0) {
@@ -284,7 +291,7 @@ microlearningsRouter.get('/feed', async (c) => {
     active.push(buildItem(ml, null));
   }
 
-  return c.json({ active, archive });
+  return c.json({ active, archive, expirationIntervalMs });
 });
 
 // ─── Dynamic routes ────────────────────────────────────────────────────────────

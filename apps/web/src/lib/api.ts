@@ -210,10 +210,11 @@ export interface LearnerFeedML extends MicrolearningWithDetails {
 export interface LearnerFeed {
   active: LearnerFeedML[];
   archive: LearnerFeedML[];
+  expirationIntervalMs: number;
 }
 
-// Inactivity window (must match backend INACTIVITY_WINDOW_MS)
-export const INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
+// Default fallback inactivity window (overridden by org config returned in the feed)
+export const DEFAULT_INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 export interface UserProfile {
   id: string;
@@ -274,6 +275,7 @@ export interface OrgConfig {
   pronunciation: string | null;
   learnerTerm: string;
   learnerTermPlural: string;
+  expirationIntervalHours: number;
 }
 
 export interface FlaggedMessage {
@@ -541,7 +543,7 @@ export const api = {
   },
   org: {
     getConfig: () => request<OrgConfig>("/org/config"),
-    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string }) =>
+    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number }) =>
       request<OrgConfig>("/org/config", {
         method: "PATCH",
         body: JSON.stringify(body),

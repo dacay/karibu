@@ -20,6 +20,7 @@ export const organizations = pgTable('organizations', {
   pronunciation: text('pronunciation'),
   learnerTerm: text('learner_term').notNull().default('user'),
   learnerTermPlural: text('learner_term_plural').notNull().default('users'),
+  expirationIntervalHours: integer('expiration_interval_hours').notNull().default(8),
   ...timestamps,
 });
 

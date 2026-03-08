@@ -35,7 +35,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
-import { api, getApiBaseUrl, getToken, INACTIVITY_WINDOW_MS, type LearnerFeedML } from "@/lib/api";
+import { api, getApiBaseUrl, getToken, DEFAULT_INACTIVITY_WINDOW_MS, type LearnerFeedML } from "@/lib/api";
 
 const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementType }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -205,7 +205,7 @@ export function LearnerRoot() {
     for (const ml of feedData?.active ?? []) {
       if (ml.progress?.status === "active" && ml.progress.openedAt) {
         const expiresAt =
-          new Date(ml.progress.openedAt).getTime() + INACTIVITY_WINDOW_MS;
+          new Date(ml.progress.openedAt).getTime() + (feedData?.expirationIntervalMs ?? DEFAULT_INACTIVITY_WINDOW_MS);
         const delay = expiresAt - Date.now();
         if (delay > 0) {
           timers.push(
