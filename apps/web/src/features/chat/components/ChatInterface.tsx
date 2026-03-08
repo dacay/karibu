@@ -248,6 +248,7 @@ export function ChatInterface({
         messages={(messages as UIMessage[]).filter(
           (m) => !(m.role === "user" && extractText(m) === "__start__")
         )}
+        chatId={chatId}
         isLoading={isLoading}
         avatar={resolvedAvatar}
         speakingMessageId={speakingMessageId}

@@ -237,6 +237,24 @@ export const avatars = pgTable('avatars', {
   index('avatars_organization_id_idx').on(table.organizationId),
 ]);
 
+// Flagged messages status enum
+export const flaggedMessageStatusEnum = pgEnum('flagged_message_status', ['open', 'reviewed', 'dismissed']);
+
+// Flagged messages table - messages flagged by users as potentially incorrect
+export const flaggedMessages = pgTable('flagged_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  messageId: text('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
+  chatId: text('chat_id').notNull().references(() => chats.id, { onDelete: 'cascade' }),
+  flaggedBy: uuid('flagged_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  reason: text('reason'),
+  status: flaggedMessageStatusEnum('status').notNull().default('open'),
+  ...timestamps,
+}, (table) => [
+  index('flagged_messages_organization_id_idx').on(table.organizationId),
+  index('flagged_messages_status_idx').on(table.status),
+]);
+
 // Document status enum
 export const documentStatusEnum = pgEnum('document_status', ['uploaded', 'processing', 'processed', 'failed']);
 

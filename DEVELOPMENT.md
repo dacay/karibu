@@ -72,3 +72,10 @@ These are two separate concerns:
 |---|---|---|
 | `synthesisStatus` | Subtopic | Async LLM job state |
 | `approval` | Value | Human review of generated content |
+
+## Message Flagging Feature
+
+Learners can flag any chat message (in ML or assistant chat) as potentially inaccurate. Admins review and resolve flags from the admin dashboard at `/flagged`.
+
+- **Data model & API**: See [Backend DEVELOPMENT.md](apps/backend/DEVELOPMENT.md#message-flagging)
+- **Frontend UX**: See [Web DEVELOPMENT.md](apps/web/DEVELOPMENT.md#message-flagging)

@@ -13,11 +13,14 @@ import {
   Sun,
   Moon,
   Monitor,
+  Flag,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
 import { useLogo } from "@/hooks/useLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
@@ -46,8 +49,9 @@ import { AvatarsSection } from "./sections/Avatars";
 import { PatternsSection } from "./sections/Patterns";
 import { TeamSection } from "./sections/Team";
 import { OrganizationSection } from "./sections/Organization";
+import { FlaggedMessagesSection } from "./sections/FlaggedMessages";
 
-type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team" | "organization";
+type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -57,17 +61,8 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "patterns", label: "Patterns", icon: MessageSquare },
   { id: "team", label: "Team", icon: Users },
   { id: "organization", label: "Organization", icon: Building2 },
+  { id: "flagged", label: "Flagged", icon: Flag },
 ];
-
-const SECTION_MAP: Record<SectionId, React.ReactNode> = {
-  dashboard: <DashboardSection />,
-  dna: <DNASection />,
-  microlearnings: <MicrolearningsSection />,
-  avatars: <AvatarsSection />,
-  patterns: <PatternsSection />,
-  team: <TeamSection />,
-  organization: <OrganizationSection />,
-};
 
 function getInitials(email: string): string {
   const [local] = email.split("@");
@@ -92,6 +87,14 @@ export function AdminRoot() {
   const router = useRouter();
 
   const activeSection: SectionId = NAV_ITEMS.find((item) => item.id !== "dashboard" && `/${item.id}` === pathname)?.id ?? "dashboard";
+
+  const { data: flagCount } = useQuery({
+    queryKey: ["flags", "count"],
+    queryFn: api.flags.count,
+    refetchInterval: 60_000,
+  });
+
+  const openFlagCount = flagCount?.count ?? 0;
 
   const initials = user?.email ? getInitials(user.email) : "?";
 
@@ -140,6 +143,7 @@ export function AdminRoot() {
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const isActive = activeSection === id;
+            const showFlagBadge = id === "flagged" && openFlagCount > 0;
             return (
               <button
                 key={id}
@@ -151,8 +155,13 @@ export function AdminRoot() {
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 ].join(" ")}
               >
-                <Icon className="size-4 shrink-0" />
-                {label}
+                <Icon className={["size-4 shrink-0", showFlagBadge ? "text-destructive" : ""].join(" ")} />
+                <span className="flex-1 text-left">{label}</span>
+                {showFlagBadge && (
+                  <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-destructive-foreground">
+                    {openFlagCount}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -205,7 +214,18 @@ export function AdminRoot() {
 
         {/* Page area */}
         <main className="flex-1 overflow-auto p-6">
-          {SECTION_MAP[activeSection]}
+          {activeSection === "dashboard" && (
+            <DashboardSection
+              onNavigateToFlags={() => router.push("/flagged")}
+            />
+          )}
+          {activeSection === "dna" && <DNASection />}
+          {activeSection === "microlearnings" && <MicrolearningsSection />}
+          {activeSection === "avatars" && <AvatarsSection />}
+          {activeSection === "patterns" && <PatternsSection />}
+          {activeSection === "team" && <TeamSection />}
+          {activeSection === "organization" && <OrganizationSection />}
+          {activeSection === "flagged" && <FlaggedMessagesSection />}
         </main>
       </div>
     </div>

@@ -159,6 +159,27 @@ Note: KMS permissions must reference the KMS key ARN, not the S3 bucket ARN.
 ### ChromaDB Pipeline
 The ChromaDB service (`src/services/chromadb.ts`) is fully built with `addDocumentChunks`, `deleteDocumentChunks`, and `queryDocuments`, but is **not yet wired into the document upload route**. Documents are uploaded to S3 and recorded in the DB with status `uploaded` — parsing, chunking, and embedding into ChromaDB still need to be connected.
 
+## Message Flagging
+
+### Data Model
+
+`flagged_messages` table (`src/db/schema.ts`):
+- `message_id` — FK to `chat_messages` (cascade delete)
+- `chat_id` — FK to `chats` (cascade delete)
+- `flagged_by` — FK to `users` (cascade delete)
+- `organization_id` — FK to `organizations` (cascade delete)
+- `reason` — optional free-text from the learner
+- `status` — `open | reviewed | dismissed` (enum: `flagged_message_status`)
+
+### API Routes (`src/routes/flags.ts`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/flags` | any user | Flag a message; validates message belongs to caller's org |
+| `GET` | `/flags/count` | admin | Returns `{ count }` of open flags for the org |
+| `GET` | `/flags` | admin | Full list with message text, chat type, ML title, flagging user |
+| `PATCH` | `/flags/:id/status` | admin | Update status to `reviewed` or `dismissed` |
+
 ## AI Assistant Notes
 
 This project includes semantic code search embeddings (qmd) for AI-powered codebase exploration.

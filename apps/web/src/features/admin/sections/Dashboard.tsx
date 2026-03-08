@@ -11,6 +11,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Flag,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -365,9 +366,54 @@ function LoadedDashboard({ data, orgConfig }: { data: DashboardMetrics; orgConfi
   );
 }
 
+// ─── Flagged messages banner ──────────────────────────────────────────────────
+
+function FlaggedMessagesBanner({
+  count,
+  onView,
+}: {
+  count: number;
+  onView: () => void;
+}) {
+  if (count === 0) return null;
+
+  return (
+    <button
+      onClick={onView}
+      className="w-full text-left rounded-xl border-2 border-destructive/60 bg-destructive/5 px-5 py-4 shadow-[0_0_18px_2px_rgba(239,68,68,0.25)] animate-pulse-glow transition-shadow hover:shadow-[0_0_28px_4px_rgba(239,68,68,0.4)] focus:outline-none"
+      style={{
+        animation: "flagGlow 2.5s ease-in-out infinite",
+      }}
+    >
+      <style>{`
+        @keyframes flagGlow {
+          0%, 100% { box-shadow: 0 0 14px 2px rgba(239,68,68,0.25); }
+          50%       { box-shadow: 0 0 28px 6px rgba(239,68,68,0.50); }
+        }
+      `}</style>
+      <div className="flex items-center gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/15">
+          <Flag className="size-4 text-destructive" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-destructive">
+            {count} flagged message{count !== 1 ? "s" : ""} need{count === 1 ? "s" : ""} review
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Learners have flagged content as potentially inaccurate. Click to review.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
+          View all
+        </span>
+      </div>
+    </button>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function DashboardSection() {
+export function DashboardSection({ onNavigateToFlags }: { onNavigateToFlags?: () => void }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["metrics"],
     queryFn: () => api.metrics.get(),
@@ -378,6 +424,12 @@ export function DashboardSection() {
     queryFn: api.org.getConfig,
   });
 
+  const { data: flagCount } = useQuery({
+    queryKey: ["flags", "count"],
+    queryFn: api.flags.count,
+    refetchInterval: 60_000,
+  });
+
   return (
     <div className="space-y-6">
       <div>
@@ -386,6 +438,13 @@ export function DashboardSection() {
           Overview of your organization's learning activity.
         </p>
       </div>
+
+      {flagCount && flagCount.count > 0 && (
+        <FlaggedMessagesBanner
+          count={flagCount.count}
+          onView={() => onNavigateToFlags?.()}
+        />
+      )}
 
       {isLoading && (
         <div className="space-y-6">

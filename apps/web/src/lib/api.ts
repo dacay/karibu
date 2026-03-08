@@ -264,6 +264,27 @@ export interface OrgConfig {
   learnerTermPlural: string;
 }
 
+export interface FlaggedMessage {
+  id: string;
+  messageId: string;
+  chatId: string;
+  reason: string | null;
+  status: "open" | "reviewed" | "dismissed";
+  createdAt: string;
+  updatedAt: string;
+  flaggedByEmail: string;
+  message: {
+    role: string;
+    parts: unknown;
+    createdAt: string;
+  };
+  chat: {
+    type: "microlearning" | "discussion";
+    microlearningId: string | null;
+    microlearningTitle: string | null;
+  };
+}
+
 export interface DashboardMetrics {
   usageFrequency: {
     totalSessions: number;
@@ -517,6 +538,22 @@ export const api = {
   },
   metrics: {
     get: () => request<DashboardMetrics>("/metrics"),
+  },
+  flags: {
+    flag: (body: { messageId: string; chatId: string; reason?: string }) =>
+      request<{ flag: { id: string } }>("/flags", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    count: () =>
+      request<{ count: number }>("/flags/count"),
+    list: () =>
+      request<{ flags: FlaggedMessage[] }>("/flags"),
+    updateStatus: (id: string, status: "reviewed" | "dismissed") =>
+      request<{ flag: FlaggedMessage }>(`/flags/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
   },
   avatars: {
     list: () =>

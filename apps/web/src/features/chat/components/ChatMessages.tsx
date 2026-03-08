@@ -9,6 +9,7 @@ import type { ChatAvatar } from "../types";
 
 interface ChatMessagesProps {
   messages: UIMessage[];
+  chatId: string;
   isLoading: boolean;
   avatar?: ChatAvatar;
   speakingMessageId?: string | null;
@@ -16,6 +17,7 @@ interface ChatMessagesProps {
 
 export function ChatMessages({
   messages,
+  chatId,
   isLoading,
   avatar,
   speakingMessageId,
@@ -39,6 +41,7 @@ export function ChatMessages({
           <ChatMessage
             key={message.id}
             message={message}
+            chatId={chatId}
             avatar={avatar}
             isSpeaking={speakingMessageId === message.id}
           />
