@@ -334,6 +334,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
                   width={48}
                   height={48}
                   className="object-cover size-full"
+                  unoptimized
                 />
               ) : (
                 <UserCircle className="size-7 text-muted-foreground" />
