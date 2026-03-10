@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Flag } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 import { ChatAgentAvatar } from "./ChatAgentAvatar";
 import { api } from "@/lib/api";
@@ -63,7 +64,23 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
               : "rounded-br-sm bg-primary text-primary-foreground"
           )}
         >
-          {text}
+          {isAssistant ? (
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                ul: ({ children }) => <ul className="mb-2 list-disc pl-4 last:mb-0">{children}</ul>,
+                ol: ({ children }) => <ol className="mb-2 list-decimal pl-4 last:mb-0">{children}</ol>,
+                li: ({ children }) => <li className="mb-0.5">{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                em: ({ children }) => <em className="italic">{children}</em>,
+                code: ({ children }) => <code className="rounded bg-background/50 px-1 py-0.5 font-mono text-xs">{children}</code>,
+              }}
+            >
+              {text}
+            </ReactMarkdown>
+          ) : (
+            text
+          )}
         </div>
 
         {/* Reason input shown below the bubble when flag button clicked */}
