@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UserCircle, Upload, X, Volume2, Square } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCircle, Upload, X, Volume2 } from "lucide-react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,7 +88,7 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                 aria-label={isVoiceActive(v.id) ? "Stop preview" : `Preview ${v.name}`}
               >
                 {isVoiceActive(v.id) ? (
-                  <Square className="size-3" />
+                  <span className="block size-2.5 rounded-[1px] bg-current" />
                 ) : (
                   <Volume2 className="size-3.5" />
                 )}
