@@ -21,8 +21,8 @@ function probeImage(src: string): Promise<string | null> {
 export function useLogo() {
   const { subdomain, isLoading: subdomainLoading } = useSubdomain();
   const version = useLogoVersion();
-  const [lightSrc, setLightSrc] = useState<string | null>(null);
-  const [darkSrc, setDarkSrc] = useState<string | null>(null);
+  const [lightSrc, setLightSrc] = useState("");
+  const [darkSrc, setDarkSrc] = useState("");
   const [probing, setProbing] = useState(true);
 
   useEffect(() => {
