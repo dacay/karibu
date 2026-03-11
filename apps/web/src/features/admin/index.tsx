@@ -51,11 +51,11 @@ import { TeamSection } from "./sections/Team";
 import { OrganizationSection } from "./sections/Organization";
 import { FlaggedMessagesSection } from "./sections/FlaggedMessages";
 
-type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
+type SectionId = "dashboard" | "source" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "dna", label: "Source", icon: Layers },
+  { id: "source", label: "Source", icon: Layers },
   { id: "microlearnings", label: "Microlearnings", icon: BookOpen },
   { id: "avatars", label: "Avatars", icon: UserCircle },
   { id: "patterns", label: "Patterns", icon: MessageSquare },
@@ -215,7 +215,7 @@ export function AdminRoot() {
               onNavigateToFlags={() => router.push("/flagged")}
             />
           )}
-          {activeSection === "dna" && <DNASection />}
+          {activeSection === "source" && <DNASection />}
           {activeSection === "microlearnings" && <MicrolearningsSection />}
           {activeSection === "avatars" && <AvatarsSection />}
           {activeSection === "patterns" && <PatternsSection />}

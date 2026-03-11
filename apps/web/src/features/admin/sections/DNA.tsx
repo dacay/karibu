@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Dna,
+  Layers,
   Upload,
   Trash2,
   FileText,
@@ -642,7 +642,7 @@ export function DNASection() {
           </div>
         ) : topics.length === 0 && !showAddTopic ? (
           <Card className="flex flex-col items-center justify-center gap-3 py-14">
-            <Dna className="size-10 text-muted-foreground" />
+            <Layers className="size-10 text-muted-foreground" />
             <CardContent className="p-0 text-center">
               <p className="text-sm font-medium text-muted-foreground">No topics defined yet</p>
               <p className="text-xs text-muted-foreground mt-1">
