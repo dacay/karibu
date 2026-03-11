@@ -26,9 +26,9 @@ export function ChatAgentAvatar({
     .slice(0, 2);
 
   const sizeClass = {
-    sm: "size-8",
-    md: "size-10",
-    lg: "size-12",
+    sm: "w-8",
+    md: "w-10",
+    lg: "w-12",
   }[size];
 
   return (
