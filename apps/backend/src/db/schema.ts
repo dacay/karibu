@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean, unique } from 'drizzle-orm/pg-core';
 
 // Role enum
 export const roleEnum = pgEnum('role', ['admin', 'user']);
@@ -27,7 +27,7 @@ export const organizations = pgTable('organizations', {
 // Users table
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull().unique(),
+  email: text('email').notNull(),
   password: text('password').notNull(), // bcrypt hashed
   phoneNumber: text('phone_number'), // E.164 format (e.g., +14155552671)
   role: roleEnum('role').notNull().default('user'),
@@ -35,7 +35,9 @@ export const users = pgTable('users', {
   // User's preferred avatar — stored as plain uuid (no FK) to avoid circular reference with avatars table
   preferredAvatarId: uuid('preferred_avatar_id'),
   ...timestamps,
-});
+}, (table) => [
+  unique('users_email_org_unique').on(table.email, table.organizationId),
+]);
 
 // Auth sessions table - tracks active JWT tokens for revocation
 export const authSessions = pgTable('auth_sessions', {

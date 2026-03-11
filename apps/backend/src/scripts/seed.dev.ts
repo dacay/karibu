@@ -47,7 +47,7 @@ async function seed() {
       organizationId: org.id,
     })
     .onConflictDoUpdate({
-      target: users.email,
+      target: [users.email, users.organizationId],
       set: { password: adminPassword },
     })
     .returning();
@@ -65,7 +65,7 @@ async function seed() {
       organizationId: org.id,
     })
     .onConflictDoUpdate({
-      target: users.email,
+      target: [users.email, users.organizationId],
       set: { password: learnerPassword },
     })
     .returning();
