@@ -29,6 +29,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [cacheBust, setCacheBust] = useState<number | null>(null);
+  const [imgError, setImgError] = useState(false);
   const bumpLogoVersion = useBumpLogoVersion();
 
   const cdnPath = subdomain ? getLogoUrl(subdomain, variant) : null;
@@ -49,6 +50,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
 
     try {
       await api.org.uploadLogo(variant, file);
+      setImgError(false);
       setCacheBust(Date.now());
       bumpLogoVersion();
       setStatus("done");
@@ -86,7 +88,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
         onDragOver={(e) => e.preventDefault()}
       >
         <div className={`mb-1 rounded p-2 ${variant === "dark" ? "bg-gray-900" : "bg-gray-50"}`}>
-          {previewSrc ? (
+          {previewSrc && !imgError ? (
             <Image
               src={previewSrc}
               alt={`${label} preview`}
@@ -94,6 +96,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
               height={40}
               className="object-contain"
               unoptimized
+              onError={() => setImgError(true)}
             />
           ) : (
             <div className="flex items-center justify-center w-[120px] h-[40px]">

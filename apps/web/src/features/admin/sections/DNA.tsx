@@ -318,7 +318,7 @@ function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
 
       {/* Values */}
       {subtopic.values.length > 0 && (
-        <Accordion type="single" collapsible defaultValue="values">
+        <Accordion type="single" collapsible>
           <AccordionItem value="values" className="border-0">
             <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
               {subtopic.values.length} value{subtopic.values.length !== 1 ? "s" : ""}
@@ -655,7 +655,7 @@ export function DNASection() {
             </CardContent>
           </Card>
         ) : (
-          <Accordion type="multiple" defaultValue={topics.map((t) => t.id)} className="space-y-1">
+          <Accordion type="multiple" className="space-y-1">
             {topics.map((topic) => <TopicItem key={topic.id} topic={topic} />)}
           </Accordion>
         )}

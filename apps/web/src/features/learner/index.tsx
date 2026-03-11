@@ -128,7 +128,7 @@ function AskMeAnythingCard() {
 
 export function LearnerRoot() {
   const { user } = useAuth();
-  const { lightSrc, darkSrc, isLoading: logoLoading, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading: logoLoading } = useLogo();
   const queryClient = useQueryClient();
 
   const { data: feedData, isLoading: feedLoading } = useQuery({
@@ -193,7 +193,6 @@ export function LearnerRoot() {
                     alt="Logo"
                     fill
                     className="block dark:hidden object-contain object-left"
-                    onError={onLightError}
                     unoptimized
                     priority
                   />
@@ -202,7 +201,6 @@ export function LearnerRoot() {
                     alt="Logo"
                     fill
                     className="hidden dark:block object-contain object-left"
-                    onError={onDarkError}
                     unoptimized
                     priority
                   />

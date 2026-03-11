@@ -82,7 +82,7 @@ const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementTyp
 export function AdminRoot() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { lightSrc, darkSrc, isLoading, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading } = useLogo();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -104,7 +104,7 @@ export function AdminRoot() {
       <aside className="flex w-56 shrink-0 flex-col border-r bg-sidebar">
         <div className="flex h-[4.5rem] items-center justify-center px-5 border-b border-sidebar-border">
           {isLoading ? (
-            <Spinner />
+            <div className="w-32 h-10" />
           ) : (
             <TooltipProvider>
               <Tooltip>
@@ -115,7 +115,6 @@ export function AdminRoot() {
                       alt="Logo"
                       fill
                       className="block dark:hidden object-contain"
-                      onError={onLightError}
                       unoptimized
                       priority
                     />
@@ -124,7 +123,6 @@ export function AdminRoot() {
                       alt="Logo"
                       fill
                       className="hidden dark:block object-contain"
-                      onError={onDarkError}
                       unoptimized
                       priority
                     />
