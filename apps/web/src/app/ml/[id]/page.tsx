@@ -172,7 +172,7 @@ export default function MicrolearningChatPage() {
 
   const handleComplete = useCallback(() => {
     setIsCompleted(true);
-    fireConfetti();
+    // fireConfetti();
     queryClient.invalidateQueries({ queryKey: ["ml", id] });
     queryClient.invalidateQueries({ queryKey: ["microlearnings", "my"] });
     queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
