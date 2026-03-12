@@ -414,7 +414,7 @@ function TopicItem({ topic }: { topic: DnaTopic }) {
 
           {/* Subtopics */}
           <div className="space-y-2">
-            {topic.subtopics.map((s) => <SubtopicRow key={s.id} subtopic={s} />)}
+            {[...topic.subtopics].sort((a, b) => a.name.localeCompare(b.name)).map((s) => <SubtopicRow key={s.id} subtopic={s} />)}
           </div>
 
           {/* Add subtopic */}
@@ -656,7 +656,7 @@ export function DNASection() {
           </Card>
         ) : (
           <Accordion type="multiple" className="space-y-1">
-            {topics.map((topic) => <TopicItem key={topic.id} topic={topic} />)}
+            {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((topic) => <TopicItem key={topic.id} topic={topic} />)}
           </Accordion>
         )}
       </div>
