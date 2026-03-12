@@ -6,6 +6,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Karibu",
   description: "Karibu microlearning platform",
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({
