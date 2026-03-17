@@ -19,6 +19,7 @@
   "dependencies": {
     "@ai-sdk/elevenlabs": "^2.0.20",
     "@ai-sdk/openai": "^3.0.29",
+    "@aws-sdk/client-cloudfront": "^3.1010.0",
     "@aws-sdk/client-s3": "^3.995.0",
     "@hono/node-server": "^1.19.9",
     "@hono/zod-validator": "^0.7.6",

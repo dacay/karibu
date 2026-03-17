@@ -3,7 +3,7 @@ import { eq, and, or, isNull } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { avatars } from '../db/schema.js';
-import { uploadToAssetsBucket, deleteFromAssetsBucket, buildAvatarImageKey } from '../services/s3.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildAvatarImageKey, invalidateCloudFrontPaths } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const avatarsRouter = new Hono();
@@ -123,6 +123,8 @@ avatarsRouter.post('/', requireRole('admin'), async (c) => {
         .where(eq(avatars.id, avatar.id))
         .returning();
 
+      await invalidateCloudFrontPaths([s3Key]);
+
       logger.info({ avatarId: updated.id, organizationId: auth.organizationId }, 'Avatar created with image.');
 
       return c.json({ avatar: updated }, 201);
@@ -219,6 +221,8 @@ avatarsRouter.patch('/:id', requireRole('admin'), async (c) => {
 
       updates.imageS3Key = s3Key;
       updates.imageS3Bucket = s3Bucket;
+
+      await invalidateCloudFrontPaths([s3Key]);
 
     } catch (err) {
 

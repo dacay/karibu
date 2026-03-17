@@ -56,6 +56,9 @@ const envSchema = z.object({
   S3_ASSETS_BUCKET_NAME: z.string().min(1).optional(),
   S3_ASSETS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
 
+  // CloudFront — Distribution ID for CDN cache invalidation on asset updates
+  CLOUDFRONT_DISTRIBUTION_ID: z.string().min(1).optional(),
+
   // DNA Synthesis
   DNA_SYNTHESIS_MIN_VALUES: z.string().default('5').transform(Number),
   DNA_SYNTHESIS_MAX_VALUES: z.string().default('10').transform(Number),
