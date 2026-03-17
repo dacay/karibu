@@ -115,14 +115,28 @@ export function ChatInterface({
     useVoiceInput(handleVoiceTranscript, handleNoSpeech);
 
   // Keep refs up-to-date so async callbacks always call the latest version
-  const startListeningRef = useRef(startListening);
-  const stopListeningRef  = useRef(stopListening);
-  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
-  useEffect(() => { stopListeningRef.current  = stopListening;  }, [stopListening]);
+  const startListeningRef    = useRef(startListening);
+  const stopListeningRef     = useRef(stopListening);
+  const discardListeningRef  = useRef(discardListening);
+  const stopTTSRef           = useRef(stop);
+  useEffect(() => { startListeningRef.current   = startListening;   }, [startListening]);
+  useEffect(() => { stopListeningRef.current    = stopListening;    }, [stopListening]);
+  useEffect(() => { discardListeningRef.current = discardListening; }, [discardListening]);
+  useEffect(() => { stopTTSRef.current          = stop;             }, [stop]);
 
   // Incremented each time a new speak() call starts; lets old .finally() callbacks
   // detect they were superseded and skip restarting the mic.
   const ttsGenerationRef = useRef(0);
+
+  // Stop voice (TTS + mic) when the learner navigates away from the chat page
+  useEffect(() => {
+    return () => {
+      ttsGenerationRef.current += 1; // invalidate any pending .finally() callbacks
+      stopTTSRef.current();
+      discardListeningRef.current();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Start mic when switching to voice mode; stop it when leaving
   useEffect(() => {
