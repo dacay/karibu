@@ -14,10 +14,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { api, type Avatar, ELEVENLABS_VOICES } from "@/lib/api";
 import { useTTS } from "@/features/chat/hooks/useTTS";
+import { useAvatarImageVersion, useBumpAvatarImageVersion } from "@/hooks/useAvatarImageVersion";
 import { getAssetUrl } from "@/lib/assets";
 
-function getAvatarImageUrl(avatar: Avatar): string | null {
-  return avatar.imageS3Key ? getAssetUrl(avatar.imageS3Key) : null;
+function getAvatarImageUrl(avatar: Avatar, version: number): string | null {
+  if (!avatar.imageS3Key) return null;
+  const base = getAssetUrl(avatar.imageS3Key);
+  return version ? `${base}?v=${version}` : base;
 }
 
 // ─── Voice selector ────────────────────────────────────────────────────────────
@@ -61,10 +64,12 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
         <div className="flex flex-wrap gap-2">
           {voices.map((v) => (
-            <button
+            <div
               key={v.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => handleChange(v.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleChange(v.id); } }}
               className={[
                 "flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors cursor-pointer",
                 value === v.id
@@ -93,7 +98,7 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                   <Volume2 className="size-3.5" />
                 )}
               </Button>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -279,9 +284,11 @@ interface AvatarCardProps {
 function AvatarCard({ avatar }: AvatarCardProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const avatarImageVersion = useAvatarImageVersion();
+  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
   const voice = ELEVENLABS_VOICES.find((v) => v.id === avatar.voiceId);
-  const imageUrl = getAvatarImageUrl(avatar);
+  const imageUrl = getAvatarImageUrl(avatar, avatarImageVersion);
 
   const updateMutation = useMutation({
     mutationFn: (values: AvatarFormValues) => {
@@ -292,7 +299,8 @@ function AvatarCard({ avatar }: AvatarCardProps) {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.update(avatar.id, formData);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      if (variables.imageFile) bumpAvatarImageVersion();
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setEditing(false);
     },
@@ -396,6 +404,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
 export function AvatarsSection() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
   const { data, isLoading } = useQuery({
     queryKey: ["avatars"],
@@ -411,7 +420,8 @@ export function AvatarsSection() {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.create(formData);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      if (variables.imageFile) bumpAvatarImageVersion();
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setCreating(false);
     },
