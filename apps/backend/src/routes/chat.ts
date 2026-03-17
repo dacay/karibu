@@ -391,7 +391,17 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
 // ─── POST /chat/assistant ──────────────────────────────────────────────────────
 
-const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — use it when answering questions that may relate to the organization's documented knowledge.`;
+const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — always call it before answering.
+
+The tool returns results in labeled sections:
+- [Source Knowledge] — curated, verified organizational knowledge. Prioritize this.
+- [Document Knowledge] — relevant excerpts from uploaded documents. Use when source knowledge is insufficient.
+- If neither section appears, no organizational knowledge was found.
+
+After writing your response, you MUST call reportSource to declare which knowledge source you actually used. Choose:
+- "source" if your answer relied on [Source Knowledge]
+- "document" if your answer relied on [Document Knowledge]
+- "general" if the search results were irrelevant to the question and you answered from your own general knowledge. In this case, also mention in your response that the answer is based on general knowledge.`;
 
 const assistantChatSchema = z.object({
   chatId: z.string().min(1),
@@ -405,7 +415,8 @@ const assistantChatSchema = z.object({
 /**
  * POST /chat/assistant
  * Streaming chat endpoint for free-form assistant conversations.
- * Includes vector search tool for accessing organizational knowledge.
+ * Search order: approved source values → vector DB → general knowledge (LLM).
+ * Tracks the data source and surfaces it via message metadata.
  */
 chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
 
@@ -413,27 +424,77 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   const messages = c.req.valid('json').messages as UIMessage[];
   const auth = c.get('auth');
 
+  // Track the best knowledge source used during this response:
+  // null = tool not called, 'source' = approved values, 'document' = vector DB, 'general' = LLM only
+  let dataSource: 'source' | 'document' | 'general' | null = null;
+
   const result = streamText({
     model: openai('gpt-4o'),
     system: ASSISTANT_SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    stopWhen: stepCountIs(2),
+    stopWhen: stepCountIs(3),
     tools: {
       searchKnowledge: {
-        description: 'Search the organizational knowledge base for information relevant to the user\'s question.',
+        description: 'Search the organizational knowledge base for information relevant to the user\'s question. Always call this before answering.',
         inputSchema: z.object({
           query: z.string().describe('Search query to find relevant organizational knowledge'),
         }),
         execute: async ({ query }) => {
+
+          const sections: string[] = [];
+
+          // Phase 1: Fetch approved source values for the organization
+          try {
+            const approvedValues = await db
+              .select({
+                content: dnaValues.content,
+                topicName: dnaTopics.name,
+                subtopicName: dnaSubtopics.name,
+              })
+              .from(dnaValues)
+              .innerJoin(dnaSubtopics, eq(dnaValues.subtopicId, dnaSubtopics.id))
+              .innerJoin(dnaTopics, eq(dnaSubtopics.topicId, dnaTopics.id))
+              .where(and(
+                eq(dnaTopics.organizationId, auth.organizationId),
+                eq(dnaValues.approval, 'approved'),
+              ));
+
+            if (approvedValues.length > 0) {
+              const lines = approvedValues.map((v) => `- [${v.topicName} > ${v.subtopicName}] ${v.content}`);
+              sections.push(`[Source Knowledge]\n${lines.join('\n')}`);
+            }
+          } catch (err) {
+            logger.warn({ err }, 'Source values query failed during assistant chat.');
+          }
+
+          // Phase 2: Search vector DB for document chunks
           try {
             const results = await queryDocuments(query, auth.organizationId, 5);
             const docs = results.documents.filter(Boolean) as string[];
-            if (docs.length === 0) return 'No relevant organizational knowledge found.';
-            return docs.join('\n\n');
+            if (docs.length > 0) {
+              sections.push(`[Document Knowledge]\n${docs.join('\n\n')}`);
+            }
           } catch (err) {
             logger.warn({ err }, 'Vector search failed during assistant chat.');
-            return 'Knowledge search unavailable.';
           }
+
+          if (sections.length === 0) {
+            return 'No organizational knowledge found for this query.';
+          }
+
+          return sections.join('\n\n---\n\n');
+        },
+      },
+      reportSource: {
+        description: 'Report which knowledge source your answer actually used. Call this after writing your response.',
+        inputSchema: z.object({
+          source: z.enum(['source', 'document', 'general']).describe(
+            '"source" if answer used Source Knowledge, "document" if answer used Document Knowledge, "general" if search results were irrelevant and you used your own knowledge',
+          ),
+        }),
+        execute: async ({ source }: { source: 'source' | 'document' | 'general' }) => {
+          dataSource = source;
+          return 'Recorded.';
         },
       },
     },
@@ -442,6 +503,11 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+    messageMetadata: ({ part }) => {
+      if (part.type === 'finish' && dataSource) {
+        return { dataSource };
+      }
+    },
     onFinish: ({ messages: updatedMessages }) => {
       saveChat({
         chatId,

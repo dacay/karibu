@@ -17,6 +17,14 @@ interface ChatMessageProps {
   isSpeaking?: boolean;
 }
 
+type DataSource = "source" | "document" | "general";
+
+const DATA_SOURCE_LABELS: Record<DataSource, string> = {
+  source: "Source Knowledge",
+  document: "Document Knowledge",
+  general: "General Knowledge",
+};
+
 function extractText(message: UIMessage): string {
   return message.parts
     .filter((p) => p.type === "text")
@@ -44,6 +52,9 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
 
   if (!text) return null;
 
+  const dataSource = (message.metadata as { dataSource?: DataSource } | undefined)?.dataSource;
+  const sourceLabel = isAssistant && dataSource ? DATA_SOURCE_LABELS[dataSource] : null;
+
   return (
     <div
       className={cn(
@@ -55,7 +66,7 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
         <ChatAgentAvatar avatar={avatar} size="sm" isSpeaking={isSpeaking} />
       )}
 
-      <div className="flex flex-col gap-1 max-w-[75%]">
+      <div className={cn("flex flex-col gap-1 max-w-[75%]", isAssistant ? "items-start" : "items-end")}>
         <div
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
@@ -82,6 +93,12 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
             text
           )}
         </div>
+
+        {sourceLabel && (
+          <span className="text-xs px-1 text-muted-foreground">
+            {sourceLabel}
+          </span>
+        )}
 
         {/* Reason input shown below the bubble when flag button clicked */}
         {showReason && (
