@@ -159,6 +159,29 @@ Note: KMS permissions must reference the KMS key ARN, not the S3 bucket ARN.
 ### ChromaDB Pipeline
 The ChromaDB service (`src/services/chromadb.ts`) is fully built with `addDocumentChunks`, `deleteDocumentChunks`, and `queryDocuments`, but is **not yet wired into the document upload route**. Documents are uploaded to S3 and recorded in the DB with status `uploaded` — parsing, chunking, and embedding into ChromaDB still need to be connected.
 
+## DNA Auto-Discovery
+
+The auto-discover feature analyzes all processed document chunks in ChromaDB and uses GPT-4o to suggest topic/subtopic structures.
+
+### Flow
+1. Admin clicks "Auto-discover" in the DNA section
+2. `POST /dna/discover` samples up to 40 chunks from ChromaDB (no specific query — broad content analysis)
+3. GPT-4o analyzes the excerpts and returns 3-6 topics with 2-4 subtopics each (JSON)
+4. Topics/subtopics are inserted with `source: 'discovered', status: 'suggested'`
+5. Existing topic names (case-insensitive) are skipped to avoid duplicates
+6. Admin reviews suggestions — Accept promotes to `active`, Reject hides from list
+
+### API Routes
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/dna/discover` | admin | Analyze documents and suggest topics/subtopics |
+| `PATCH` | `/dna/topics/:id/status` | admin | Accept (`active`) or reject a suggested topic |
+| `PATCH` | `/dna/subtopics/:id/status` | admin | Accept (`active`) or reject a suggested subtopic |
+
+### ChromaDB Dependency
+Requires processed documents (status `processed` in DB and chunks in ChromaDB). Uses `sampleDocumentChunks()` from `src/services/chromadb.ts` which calls `collection.get()` with org filter.
+
 ## Message Flagging
 
 ### Data Model
