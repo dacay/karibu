@@ -133,8 +133,21 @@ Each bucket has its own key prefix env var (`S3_DOCS_KEY_PREFIX`, `S3_ASSETS_KEY
 - Same subdomain-scoped pattern. Uploaded by admins via the Organization config page.
 - Uploaded with `Cache-Control: no-cache` so CloudFront revalidates on every request (logos change infrequently but must propagate immediately).
 
+### CloudFront Cache Invalidation
+
+When avatar images or org logos are uploaded/updated, the backend creates a targeted CloudFront invalidation for the specific S3 key path so the CDN serves the new file immediately.
+
+- Requires `CLOUDFRONT_DISTRIBUTION_ID` env var (optional — silently skipped when absent)
+- Reuses the same AWS credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`)
+- Invalidation is fire-and-forget: failures log a warning but don't fail the upload
+
+**Affected routes:**
+- `POST /avatars` — new avatar with image
+- `PATCH /avatars/:id` — image replacement
+- `POST /org/logo` — logo upload
+
 ### AWS IAM — Minimal Policy
-The backend IAM user needs access to both buckets:
+The backend IAM user needs access to both buckets plus CloudFront invalidation:
 ```json
 {
   "Statement": [
@@ -145,6 +158,11 @@ The backend IAM user needs access to both buckets:
         "arn:aws:s3:::karibu-docs/*",
         "arn:aws:s3:::karibu-assets/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::ACCOUNT_ID:distribution/DISTRIBUTION_ID"
     },
     {
       "Effect": "Allow",

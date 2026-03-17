@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
-import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, type LogoVariant } from '../services/s3.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, invalidateCloudFrontPaths, type LogoVariant } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const org = new Hono();
@@ -179,6 +179,8 @@ org.post('/logo', async (c) => {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await uploadToAssetsBucket(s3Key, buffer, file.type, { cacheControl: 'no-cache' });
+
+    await invalidateCloudFrontPaths([s3Key]);
 
     logger.info({ organizationId: organization.id, variant, s3Key }, 'Org logo uploaded.');
 
