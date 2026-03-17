@@ -16,6 +16,15 @@ Admin sections use URL-based routing:
 
 Current admin-only sections: `dna`, `microlearnings`, `avatars`, `patterns`, `team`, `flagged`
 
+## DNA Auto-Discovery
+
+The "Auto-discover" button in the DNA section (`/dna`) calls `POST /dna/discover` to analyze uploaded documents and suggest topic/subtopic structures.
+
+- Suggested items appear inline with an amber "Suggested" badge and Accept/Reject buttons
+- Accepting sets `status: active` and shows normal controls (edit, delete, synthesize)
+- Rejecting hides the item from the list (`status: rejected` filtered out in display)
+- Success/error feedback appears inline below the toolbar
+
 ## Message Flagging
 
 Learners can flag any chat message (ML or assistant) as potentially inaccurate via a hover-revealed flag button. Admins review flags at `/flagged`.
