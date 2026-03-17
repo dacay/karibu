@@ -48,7 +48,7 @@ export function ChatInterface({
   const { speak, stop, isSpeaking } = useTTS();
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, error, reload } = useChat({
     id: chatId,
     transport: new DefaultChatTransport({
       api: endpoint,
@@ -251,6 +251,8 @@ export function ChatInterface({
         isLoading={isLoading}
         avatar={resolvedAvatar}
         speakingMessageId={speakingMessageId}
+        error={error}
+        onRetry={reload}
       />
 
       {/* Input */}
