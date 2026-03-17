@@ -17,6 +17,23 @@ interface ChatMessageProps {
   isSpeaking?: boolean;
 }
 
+type DataSource = "dna" | "vector" | "general";
+
+const DATA_SOURCE_LABEL: Record<DataSource, { label: string; className: string }> = {
+  dna: {
+    label: "Organizational Knowledge",
+    className: "text-emerald-600 dark:text-emerald-400",
+  },
+  vector: {
+    label: "Document Knowledge",
+    className: "text-blue-600 dark:text-blue-400",
+  },
+  general: {
+    label: "General Knowledge",
+    className: "text-muted-foreground",
+  },
+};
+
 function extractText(message: UIMessage): string {
   return message.parts
     .filter((p) => p.type === "text")
@@ -44,6 +61,9 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
 
   if (!text) return null;
 
+  const dataSource = (message.metadata as { dataSource?: DataSource } | undefined)?.dataSource;
+  const sourceInfo = isAssistant && dataSource ? DATA_SOURCE_LABEL[dataSource] : null;
+
   return (
     <div
       className={cn(
@@ -55,7 +75,7 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
         <ChatAgentAvatar avatar={avatar} size="sm" isSpeaking={isSpeaking} />
       )}
 
-      <div className="flex flex-col gap-1 max-w-[75%]">
+      <div className={cn("flex flex-col gap-1 max-w-[75%]", isAssistant ? "items-start" : "items-end")}>
         <div
           className={cn(
             "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
@@ -82,6 +102,12 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
             text
           )}
         </div>
+
+        {sourceInfo && (
+          <span className={cn("text-xs px-1", sourceInfo.className)}>
+            {sourceInfo.label}
+          </span>
+        )}
 
         {/* Reason input shown below the bubble when flag button clicked */}
         {showReason && (

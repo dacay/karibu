@@ -391,7 +391,9 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
 // ─── POST /chat/assistant ──────────────────────────────────────────────────────
 
-const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — use it when answering questions that may relate to the organization's documented knowledge.`;
+const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — use it when answering questions.
+
+When the tool returns "NO_ORGANIZATIONAL_KNOWLEDGE_FOUND", it means no organizational records exist for this topic. In that case, answer using your general knowledge and explicitly mention that your response is based on general knowledge, not organizational data.`;
 
 const assistantChatSchema = z.object({
   chatId: z.string().min(1),
@@ -405,13 +407,17 @@ const assistantChatSchema = z.object({
 /**
  * POST /chat/assistant
  * Streaming chat endpoint for free-form assistant conversations.
- * Includes vector search tool for accessing organizational knowledge.
+ * Search order: approved DNA values → vector DB → general knowledge (LLM).
+ * Tracks the data source and surfaces it via message metadata.
  */
 chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
 
   const { chatId } = c.req.valid('json');
   const messages = c.req.valid('json').messages as UIMessage[];
   const auth = c.get('auth');
+
+  // Track the best knowledge source used during this response
+  let dataSource: 'dna' | 'vector' | 'general' = 'general';
 
   const result = streamText({
     model: openai('gpt-4o'),
@@ -420,20 +426,45 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
     stopWhen: stepCountIs(2),
     tools: {
       searchKnowledge: {
-        description: 'Search the organizational knowledge base for information relevant to the user\'s question.',
+        description: 'Search the organizational knowledge base for information relevant to the user\'s question. Always call this before answering.',
         inputSchema: z.object({
           query: z.string().describe('Search query to find relevant organizational knowledge'),
         }),
         execute: async ({ query }) => {
+          // Phase 1: Search approved DNA values
+          try {
+            const approvedValues = await db
+              .select({ content: dnaValues.content })
+              .from(dnaValues)
+              .innerJoin(dnaSubtopics, eq(dnaValues.subtopicId, dnaSubtopics.id))
+              .innerJoin(dnaTopics, eq(dnaSubtopics.topicId, dnaTopics.id))
+              .where(and(
+                eq(dnaTopics.organizationId, auth.organizationId),
+                eq(dnaValues.approval, 'approved'),
+              ));
+
+            if (approvedValues.length > 0) {
+              dataSource = 'dna';
+              return `ORGANIZATIONAL KNOWLEDGE:\n${approvedValues.map((v) => `- ${v.content}`).join('\n')}`;
+            }
+          } catch (err) {
+            logger.warn({ err }, 'DNA values query failed during assistant chat.');
+          }
+
+          // Phase 2: Search vector DB
           try {
             const results = await queryDocuments(query, auth.organizationId, 5);
             const docs = results.documents.filter(Boolean) as string[];
-            if (docs.length === 0) return 'No relevant organizational knowledge found.';
-            return docs.join('\n\n');
+            if (docs.length > 0) {
+              dataSource = 'vector';
+              return docs.join('\n\n');
+            }
           } catch (err) {
             logger.warn({ err }, 'Vector search failed during assistant chat.');
-            return 'Knowledge search unavailable.';
           }
+
+          // Phase 3: No organizational knowledge found
+          return 'NO_ORGANIZATIONAL_KNOWLEDGE_FOUND';
         },
       },
     },
@@ -442,6 +473,11 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+    messageMetadata: ({ part }) => {
+      if (part.type === 'finish') {
+        return { dataSource };
+      }
+    },
     onFinish: ({ messages: updatedMessages }) => {
       saveChat({
         chatId,
