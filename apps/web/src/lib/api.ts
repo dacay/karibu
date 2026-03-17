@@ -330,7 +330,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    updateTopic: (id: string, body: { name?: string; description?: string }) =>
+    updateTopic: (id: string, body: { name?: string; description?: string; status?: "active" | "rejected" }) =>
       request<{ topic: DnaTopic }>(`/dna/topics/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -342,13 +342,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    updateSubtopic: (id: string, body: { name?: string; description?: string }) =>
+    updateSubtopic: (id: string, body: { name?: string; description?: string; status?: "active" | "rejected" }) =>
       request<{ subtopic: DnaSubtopic }>(`/dna/subtopics/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       }),
     deleteSubtopic: (id: string) =>
       request<{ success: boolean }>(`/dna/subtopics/${id}`, { method: "DELETE" }),
+    discover: () =>
+      request<{ success: boolean; topicsCreated: number; subtopicsCreated: number }>("/dna/discover", {
+        method: "POST",
+      }),
     synthesize: (subtopicId: string) =>
       request<{ success: boolean; valueCount: number }>(`/dna/subtopics/${subtopicId}/synthesize`, {
         method: "POST",

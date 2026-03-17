@@ -3,7 +3,7 @@ import { eq, and, asc, ne } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { dnaTopics, dnaSubtopics, dnaValues } from '../db/schema.js';
+import { dnaTopics, dnaSubtopics, dnaValues, documents } from '../db/schema.js';
 import { queryDocuments } from '../services/chromadb.js';
 import { openai } from '../ai/mastra.js';
 import { logger } from '../config/logger.js';
@@ -84,7 +84,7 @@ dnaRouter.patch('/topics/:id', requireRole('admin'), async (c) => {
 
   const auth = c.get('auth');
   const id = c.req.param('id');
-  const body = await c.req.json<{ name?: string; description?: string }>();
+  const body = await c.req.json<{ name?: string; description?: string; status?: 'active' | 'rejected' }>();
 
   const [topic] = await db
     .select()
@@ -101,9 +101,18 @@ dnaRouter.patch('/topics/:id', requireRole('admin'), async (c) => {
     .set({
       ...(body.name?.trim() ? { name: body.name.trim() } : {}),
       ...(body.description !== undefined ? { description: body.description.trim() } : {}),
+      ...(body.status ? { status: body.status } : {}),
     })
     .where(eq(dnaTopics.id, id))
     .returning();
+
+  // When accepting a discovered topic, also activate all its suggested subtopics
+  if (body.status === 'active') {
+    await db
+      .update(dnaSubtopics)
+      .set({ status: 'active' })
+      .where(and(eq(dnaSubtopics.topicId, id), eq(dnaSubtopics.status, 'suggested')));
+  }
 
   return c.json({ topic: updated });
 });
@@ -116,7 +125,7 @@ dnaRouter.patch('/subtopics/:id', requireRole('admin'), async (c) => {
 
   const auth = c.get('auth');
   const id = c.req.param('id');
-  const body = await c.req.json<{ name?: string; description?: string }>();
+  const body = await c.req.json<{ name?: string; description?: string; status?: 'active' | 'rejected' }>();
 
   const [subtopic] = await db
     .select()
@@ -133,6 +142,7 @@ dnaRouter.patch('/subtopics/:id', requireRole('admin'), async (c) => {
     .set({
       ...(body.name?.trim() ? { name: body.name.trim() } : {}),
       ...(body.description !== undefined ? { description: body.description.trim() } : {}),
+      ...(body.status ? { status: body.status } : {}),
     })
     .where(eq(dnaSubtopics.id, id))
     .returning();
@@ -409,6 +419,138 @@ dnaRouter.patch('/values/:id/approval', requireRole('admin'), async (c) => {
     .returning();
 
   return c.json({ value: updated });
+});
+
+/**
+ * POST /dna/discover
+ * Analyze uploaded documents and suggest topic/subtopic structures using AI.
+ * Creates suggested topics with source: discovered, status: suggested.
+ */
+dnaRouter.post('/discover', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+
+  // Check that at least one document has been processed
+  const [processedDoc] = await db
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.organizationId, auth.organizationId), eq(documents.status, 'processed')))
+    .limit(1);
+
+  if (!processedDoc) {
+    return c.json({ error: 'No processed documents found. Upload and process documents before running auto-discover.' }, 422);
+  }
+
+  // Query ChromaDB for a broad sample of document content
+  const queryResult = await queryDocuments('key concepts themes topics knowledge practices', auth.organizationId, 25);
+  const chunks = queryResult.documents.filter((d): d is string => d !== null && d.length > 0);
+
+  if (chunks.length === 0) {
+    return c.json({ error: 'No document content found. Ensure documents have finished processing.' }, 422);
+  }
+
+  // Load existing topic names to avoid creating duplicates
+  const existingTopics = await db
+    .select({ name: dnaTopics.name })
+    .from(dnaTopics)
+    .where(eq(dnaTopics.organizationId, auth.organizationId));
+
+  const existingNames = new Set(existingTopics.map((t) => t.name.toLowerCase().trim()));
+
+  const context = chunks.slice(0, 20).join('\n\n---\n\n');
+
+  type DiscoverResponse = {
+    topics: Array<{
+      name: string;
+      description: string;
+      subtopics: Array<{ name: string; description: string }>;
+    }>;
+  };
+
+  let suggestions: DiscoverResponse;
+
+  try {
+
+    const { text } = await generateText({
+      model: openai('gpt-4o'),
+      prompt: `You are analyzing an organization's documents to discover their main knowledge topics.
+
+Based on the document excerpts below, identify 3 to 6 distinct knowledge topics with 2 to 4 subtopics each. These should reflect the actual themes, practices, and knowledge areas present in the documents.
+
+Respond with valid JSON only — no explanation, no markdown fences. Use this exact structure:
+{
+  "topics": [
+    {
+      "name": "Topic Name",
+      "description": "One sentence describing what this topic covers.",
+      "subtopics": [
+        { "name": "Subtopic Name", "description": "One sentence describing this specific aspect." }
+      ]
+    }
+  ]
+}
+
+Guidelines:
+- Topic names should be concise (2-5 words), e.g. "Safety Culture", "Leadership Philosophy"
+- Subtopic names should be specific aspects, e.g. "Incident Reporting", "Decision-Making Process"
+- Base suggestions strictly on what is present in the excerpts
+- Avoid overly generic topics like "General Information" or "Introduction"
+
+Document excerpts:
+${context}`,
+    });
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in LLM response');
+    suggestions = JSON.parse(jsonMatch[0]) as DiscoverResponse;
+
+  } catch (err) {
+    logger.error({ err }, 'Auto-discover LLM call or parse failed.');
+    return c.json({ error: 'Failed to generate suggestions. Please try again.' }, 500);
+  }
+
+  if (!Array.isArray(suggestions.topics) || suggestions.topics.length === 0) {
+    return c.json({ error: 'No topics could be discovered from the documents.' }, 422);
+  }
+
+  let topicsCreated = 0;
+  let subtopicsCreated = 0;
+
+  for (const t of suggestions.topics) {
+    const name = t.name?.trim();
+    if (!name || existingNames.has(name.toLowerCase())) continue;
+
+    const [topic] = await db.insert(dnaTopics).values({
+      organizationId: auth.organizationId,
+      name,
+      description: t.description?.trim() ?? '',
+      source: 'discovered',
+      status: 'suggested',
+    }).returning();
+
+    topicsCreated++;
+    existingNames.add(name.toLowerCase());
+
+    for (const s of (t.subtopics ?? [])) {
+      const subtopicName = s.name?.trim();
+      if (!subtopicName) continue;
+
+      await db.insert(dnaSubtopics).values({
+        topicId: topic.id,
+        organizationId: auth.organizationId,
+        name: subtopicName,
+        description: s.description?.trim() ?? '',
+        source: 'discovered',
+        status: 'suggested',
+      });
+
+      subtopicsCreated++;
+    }
+  }
+
+  logger.info({ organizationId: auth.organizationId, topicsCreated, subtopicsCreated }, 'DNA auto-discover complete.');
+
+  return c.json({ success: true, topicsCreated, subtopicsCreated });
 });
 
 /**

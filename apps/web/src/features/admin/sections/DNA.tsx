@@ -219,6 +219,32 @@ function ValueRow({ value }: { value: DnaValue }) {
   );
 }
 
+// ─── Suggested topic banner ───────────────────────────────────────────────────
+
+interface SuggestedBannerProps {
+  label: string;
+  onAccept: () => void;
+  onDismiss: () => void;
+  isAccepting: boolean;
+  isDismissing: boolean;
+}
+
+function SuggestedBanner({ label, onAccept, onDismiss, isAccepting, isDismissing }: SuggestedBannerProps) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+      <p className="flex-1 text-xs text-amber-800">{label}</p>
+      <Button size="sm" disabled={isAccepting || isDismissing} onClick={onAccept}>
+        {isAccepting ? <Spinner className="size-3 mr-1" /> : <Check className="size-3 mr-1" />}
+        Accept
+      </Button>
+      <Button size="sm" variant="ghost" disabled={isAccepting || isDismissing} onClick={onDismiss}>
+        {isDismissing ? <Spinner className="size-3 mr-1" /> : null}
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
 // ─── Subtopic row ────────────────────────────────────────────────────────────
 
 function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
@@ -226,6 +252,11 @@ function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(subtopic.name);
   const [editDescription, setEditDescription] = useState(subtopic.description ?? "");
+
+  const acceptMutation = useMutation({
+    mutationFn: () => api.dna.updateSubtopic(subtopic.id, { status: "active" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+  });
 
   const synthesizeMutation = useMutation({
     mutationFn: () => api.dna.synthesize(subtopic.id),
@@ -294,6 +325,17 @@ function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
         </Button>
       </div>
 
+      {/* Suggested banner */}
+      {subtopic.status === "suggested" && (
+        <SuggestedBanner
+          label="Auto-discovered subtopic. Accept to add it, or dismiss to remove."
+          onAccept={() => acceptMutation.mutate()}
+          onDismiss={() => deleteMutation.mutate()}
+          isAccepting={acceptMutation.isPending}
+          isDismissing={deleteMutation.isPending}
+        />
+      )}
+
       {/* Synthesis error */}
       {synthesizeMutation.isError && (
         <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -349,6 +391,11 @@ function TopicItem({ topic }: { topic: DnaTopic }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
   });
 
+  const acceptMutation = useMutation({
+    mutationFn: () => api.dna.updateTopic(topic.id, { status: "active" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+  });
+
   const updateMutation = useMutation({
     mutationFn: () => api.dna.updateTopic(topic.id, { name: editName, description: editDescription }),
     onSuccess: () => {
@@ -397,6 +444,17 @@ function TopicItem({ topic }: { topic: DnaTopic }) {
       </AccordionTrigger>
       <AccordionContent>
         <div className="space-y-3 pt-1">
+          {/* Suggested banner */}
+          {topic.status === "suggested" && (
+            <SuggestedBanner
+              label="Auto-discovered topic. Accept to add it and all its subtopics, or dismiss to remove."
+              onAccept={() => acceptMutation.mutate()}
+              onDismiss={() => deleteMutation.mutate()}
+              isAccepting={acceptMutation.isPending}
+              isDismissing={deleteMutation.isPending}
+            />
+          )}
+
           {editing ? (
             <div className="flex flex-col gap-2 p-3 border rounded-lg bg-muted/30">
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Topic name" />
@@ -580,10 +638,19 @@ function SourceDocuments() {
 export function DNASection() {
   const queryClient = useQueryClient();
   const [showAddTopic, setShowAddTopic] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<{ topicsCreated: number; subtopicsCreated: number } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dna"],
     queryFn: () => api.dna.list(),
+  });
+
+  const discoverMutation = useMutation({
+    mutationFn: () => api.dna.discover(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["dna"] });
+      setDiscoverResult({ topicsCreated: result.topicsCreated, subtopicsCreated: result.subtopicsCreated });
+    },
   });
 
   const addTopicMutation = useMutation({
@@ -613,9 +680,16 @@ export function DNASection() {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-medium">Topics &amp; Subtopics</h3>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled title="Coming soon">
-              <Wand2 className="size-3 mr-1" />
-              Auto-discover
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={discoverMutation.isPending}
+              onClick={() => { setDiscoverResult(null); discoverMutation.mutate(); }}
+            >
+              {discoverMutation.isPending
+                ? <><Spinner className="size-3 mr-1" /> Discovering...</>
+                : <><Wand2 className="size-3 mr-1" /> Auto-discover</>
+              }
             </Button>
             <Button size="sm" onClick={() => setShowAddTopic(true)} disabled={showAddTopic}>
               <Plus className="size-3 mr-1" />
@@ -623,6 +697,26 @@ export function DNASection() {
             </Button>
           </div>
         </div>
+
+        {/* Auto-discover feedback */}
+        {discoverMutation.isError && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" />
+            {discoverMutation.error?.message ?? "Auto-discover failed. Please try again."}
+          </div>
+        )}
+        {discoverResult && discoverResult.topicsCreated === 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-muted bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <AlertCircle className="size-4 shrink-0" />
+            No new topics were discovered — all suggestions already exist.
+          </div>
+        )}
+        {discoverResult && discoverResult.topicsCreated > 0 && (
+          <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <Wand2 className="size-4 shrink-0" />
+            Discovered {discoverResult.topicsCreated} topic{discoverResult.topicsCreated !== 1 ? "s" : ""} with {discoverResult.subtopicsCreated} subtopic{discoverResult.subtopicsCreated !== 1 ? "s" : ""}. Review and accept the suggestions below.
+          </div>
+        )}
 
         {/* Add topic inline form */}
         {showAddTopic && (
