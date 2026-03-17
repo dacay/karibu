@@ -1,8 +1,10 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
 let s3Client: S3Client | null = null;
+let cloudFrontClient: CloudFrontClient | null = null;
 
 const getS3Client = (): S3Client => {
 
@@ -22,6 +24,26 @@ const getS3Client = (): S3Client => {
   });
 
   return s3Client;
+}
+
+const getCloudFrontClient = (): CloudFrontClient => {
+
+  if (cloudFrontClient) return cloudFrontClient;
+
+  if (!env.AWS_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+
+    throw new Error('AWS credentials are not configured.');
+  }
+
+  cloudFrontClient = new CloudFrontClient({
+    region: env.AWS_REGION,
+    credentials: {
+      accessKeyId: env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+
+  return cloudFrontClient;
 }
 
 const getDocsBucketName = (): string => {
@@ -159,4 +181,38 @@ export const buildOrgLogoKey = (subdomain: string, variant: LogoVariant): string
   const prefix = env.S3_ASSETS_KEY_PREFIX ? `${env.S3_ASSETS_KEY_PREFIX}/` : '';
 
   return `${prefix}${subdomain}/logo-${variant}.png`;
+}
+
+/**
+ * Invalidate one or more CloudFront paths so updated assets are served immediately.
+ * S3 keys are converted to CloudFront paths by prepending a leading slash.
+ * No-ops silently when CLOUDFRONT_DISTRIBUTION_ID is not configured.
+ */
+export const invalidateCloudFrontPaths = async (s3Keys: string[]): Promise<void> => {
+
+  if (!env.CLOUDFRONT_DISTRIBUTION_ID) return;
+
+  const paths = s3Keys.map((key) => `/${key}`);
+
+  const command = new CreateInvalidationCommand({
+    DistributionId: env.CLOUDFRONT_DISTRIBUTION_ID,
+    InvalidationBatch: {
+      CallerReference: `${Date.now()}`,
+      Paths: {
+        Quantity: paths.length,
+        Items: paths,
+      },
+    },
+  });
+
+  try {
+
+    const client = getCloudFrontClient();
+    await client.send(command);
+    logger.info({ paths, distributionId: env.CLOUDFRONT_DISTRIBUTION_ID }, 'CloudFront invalidation created.');
+
+  } catch (err) {
+
+    logger.warn({ err, paths }, 'CloudFront invalidation failed. The CDN may serve stale content until TTL expiry.');
+  }
 }
