@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AccountMenu } from "@/components/AccountMenu";
+import { KaribuFooter } from "@/components/KaribuFooter";
 import { api, getApiBaseUrl, getToken, DEFAULT_INACTIVITY_WINDOW_MS, type LearnerFeedML } from "@/lib/api";
 
 // ─── Active ML card ─────────────────────────────────────────────────────────
@@ -274,6 +275,8 @@ export function LearnerRoot() {
           </div>
         )}
       </main>
+
+      <KaribuFooter />
     </div>
   );
 }
