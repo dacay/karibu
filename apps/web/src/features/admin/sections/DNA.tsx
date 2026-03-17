@@ -65,6 +65,12 @@ function approvalBadge(approval: DnaValue["approval"]) {
   return <Badge className="text-xs bg-yellow-100 text-yellow-700 hover:bg-yellow-100 border-0">Pending</Badge>;
 }
 
+function suggestedBadge(status: DnaTopic["status"] | DnaSubtopic["status"]) {
+  if (status === "suggested")
+    return <Badge className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100 border-0">Suggested</Badge>;
+  return null;
+}
+
 function synthesisBadge(status: DnaSubtopic["synthesisStatus"]) {
   if (status === "running")
     return <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100 border-0">Running</Badge>;
@@ -221,11 +227,19 @@ function ValueRow({ value }: { value: DnaValue }) {
 
 // ─── Subtopic row ────────────────────────────────────────────────────────────
 
-function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
+function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; onSuggestionAction?: () => void }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(subtopic.name);
   const [editDescription, setEditDescription] = useState(subtopic.description ?? "");
+
+  const statusMutation = useMutation({
+    mutationFn: (status: "active" | "rejected") => api.dna.updateSubtopicStatus(subtopic.id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dna"] });
+      onSuggestionAction?.();
+    },
+  });
 
   const synthesizeMutation = useMutation({
     mutationFn: () => api.dna.synthesize(subtopic.id),
@@ -255,43 +269,77 @@ function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium truncate">{subtopic.name}</p>
-            {synthesisBadge(subtopic.synthesisStatus)}
+            {suggestedBadge(subtopic.status)}
+            {subtopic.status === "active" && synthesisBadge(subtopic.synthesisStatus)}
           </div>
           {subtopic.description && !editing && (
             <p className="text-xs text-muted-foreground mt-0.5">{subtopic.description}</p>
           )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          disabled={isRunning}
-          onClick={() => synthesizeMutation.mutate()}
-        >
-          {isRunning
-            ? <><Spinner className="size-3 mr-1" /> Synthesizing</>
-            : <><Wand2 className="size-3 mr-1" /> {subtopic.lastSynthesizedAt ? "Resynthesize" : "Synthesize"}</>
-          }
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={() => { setEditName(subtopic.name); setEditDescription(subtopic.description ?? ""); setEditing(true); }}
-          aria-label={`Edit subtopic ${subtopic.name}`}
-        >
-          <Pencil className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 text-muted-foreground hover:text-destructive"
-          disabled={deleteMutation.isPending}
-          onClick={() => deleteMutation.mutate()}
-          aria-label={`Delete subtopic ${subtopic.name}`}
-        >
-          {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
-        </Button>
+        {subtopic.status === "suggested" ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 text-green-700 border-green-300 hover:bg-green-50"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("active")}
+              aria-label="Accept subtopic"
+            >
+              {statusMutation.isPending && statusMutation.variables === "active"
+                ? <Spinner className="size-3 mr-1" />
+                : <Check className="size-3 mr-1" />}
+              Accept
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
+              disabled={statusMutation.isPending}
+              onClick={() => statusMutation.mutate("rejected")}
+              aria-label="Reject subtopic"
+            >
+              {statusMutation.isPending && statusMutation.variables === "rejected"
+                ? <Spinner className="size-3 mr-1" />
+                : <X className="size-3 mr-1" />}
+              Reject
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={isRunning}
+              onClick={() => synthesizeMutation.mutate()}
+            >
+              {isRunning
+                ? <><Spinner className="size-3 mr-1" /> Synthesizing</>
+                : <><Wand2 className="size-3 mr-1" /> {subtopic.lastSynthesizedAt ? "Resynthesize" : "Synthesize"}</>
+              }
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => { setEditName(subtopic.name); setEditDescription(subtopic.description ?? ""); setEditing(true); }}
+              aria-label={`Edit subtopic ${subtopic.name}`}
+            >
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate()}
+              aria-label={`Delete subtopic ${subtopic.name}`}
+            >
+              {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Synthesis error */}
@@ -337,12 +385,20 @@ function SubtopicRow({ subtopic }: { subtopic: DnaSubtopic }) {
 
 // ─── Topic item ──────────────────────────────────────────────────────────────
 
-function TopicItem({ topic }: { topic: DnaTopic }) {
+function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestionAction?: () => void }) {
   const queryClient = useQueryClient();
   const [showAddSubtopic, setShowAddSubtopic] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(topic.name);
   const [editDescription, setEditDescription] = useState(topic.description ?? "");
+
+  const statusMutation = useMutation({
+    mutationFn: (status: "active" | "rejected") => api.dna.updateTopicStatus(topic.id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dna"] });
+      onSuggestionAction?.();
+    },
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => api.dna.deleteTopic(topic.id),
@@ -371,29 +427,57 @@ function TopicItem({ topic }: { topic: DnaTopic }) {
       <AccordionTrigger className="hover:no-underline">
         <div className="flex items-center gap-2 flex-1 mr-2">
           <span className="font-medium">{topic.name}</span>
-          {topic.source === "discovered" && (
-            <Badge variant="secondary" className="text-xs">Discovered</Badge>
-          )}
+          {suggestedBadge(topic.status)}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0 text-muted-foreground hover:text-foreground mr-1"
-          onClick={(e) => { e.stopPropagation(); setEditName(topic.name); setEditDescription(topic.description ?? ""); setEditing(true); }}
-          aria-label={`Edit topic ${topic.name}`}
-        >
-          <Pencil className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0 text-muted-foreground hover:text-destructive mr-1"
-          disabled={deleteMutation.isPending}
-          onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(); }}
-          aria-label={`Delete topic ${topic.name}`}
-        >
-          {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
-        </Button>
+        {topic.status === "suggested" ? (
+          <>
+            <Button asChild size="sm" variant="outline">
+              <span
+                className={`shrink-0 text-green-700 border-green-300 hover:bg-green-50 mr-1 ${statusMutation.isPending ? "pointer-events-none opacity-50" : ""}`}
+                onClick={(e) => { e.stopPropagation(); statusMutation.mutate("active"); }}
+                aria-label={`Accept topic ${topic.name}`}
+              >
+                {statusMutation.isPending && statusMutation.variables === "active"
+                  ? <Spinner className="size-3 mr-1" />
+                  : <Check className="size-3 mr-1" />}
+                Accept
+              </span>
+            </Button>
+            <Button asChild size="sm" variant="ghost">
+              <span
+                className={`shrink-0 text-muted-foreground hover:text-destructive mr-1 ${statusMutation.isPending ? "pointer-events-none opacity-50" : ""}`}
+                onClick={(e) => { e.stopPropagation(); statusMutation.mutate("rejected"); }}
+                aria-label={`Reject topic ${topic.name}`}
+              >
+                {statusMutation.isPending && statusMutation.variables === "rejected"
+                  ? <Spinner className="size-3 mr-1" />
+                  : <X className="size-3 mr-1" />}
+                Reject
+              </span>
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button asChild variant="ghost" size="icon">
+              <span
+                className="size-7 shrink-0 text-muted-foreground hover:text-foreground mr-1"
+                onClick={(e) => { e.stopPropagation(); setEditName(topic.name); setEditDescription(topic.description ?? ""); setEditing(true); }}
+                aria-label={`Edit topic ${topic.name}`}
+              >
+                <Pencil className="size-4" />
+              </span>
+            </Button>
+            <Button asChild variant="ghost" size="icon">
+              <span
+                className={`size-7 shrink-0 text-muted-foreground hover:text-destructive mr-1 ${deleteMutation.isPending ? "pointer-events-none opacity-50" : ""}`}
+                onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(); }}
+                aria-label={`Delete topic ${topic.name}`}
+              >
+                {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
+              </span>
+            </Button>
+          </>
+        )}
       </AccordionTrigger>
       <AccordionContent>
         <div className="space-y-3 pt-1">
@@ -414,7 +498,10 @@ function TopicItem({ topic }: { topic: DnaTopic }) {
 
           {/* Subtopics */}
           <div className="space-y-2">
-            {[...topic.subtopics].sort((a, b) => a.name.localeCompare(b.name)).map((s) => <SubtopicRow key={s.id} subtopic={s} />)}
+            {[...topic.subtopics]
+              .filter((s) => s.status !== "rejected")
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((s) => <SubtopicRow key={s.id} subtopic={s} onSuggestionAction={onSuggestionAction} />)}
           </div>
 
           {/* Add subtopic */}
@@ -580,6 +667,7 @@ function SourceDocuments() {
 export function DNASection() {
   const queryClient = useQueryClient();
   const [showAddTopic, setShowAddTopic] = useState(false);
+  const [discoverResult, setDiscoverResult] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["dna"],
@@ -595,7 +683,23 @@ export function DNASection() {
     },
   });
 
+  const discoverMutation = useMutation({
+    mutationFn: () => api.dna.discover(),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["dna"] });
+      setDiscoverResult(
+        result.topicCount > 0
+          ? `Suggested ${result.topicCount} topic${result.topicCount !== 1 ? "s" : ""} with ${result.subtopicCount} subtopic${result.subtopicCount !== 1 ? "s" : ""}. Review them below.`
+          : "No new topics found. Documents may not contain enough distinct knowledge domains."
+      );
+    },
+    onError: (err: Error) => {
+      setDiscoverResult(null);
+    },
+  });
+
   const topics = data?.topics ?? [];
+  const visibleTopics = topics.filter((t) => t.status !== "rejected");
 
   return (
     <div className="space-y-6">
@@ -613,9 +717,15 @@ export function DNASection() {
         <div className="flex items-center justify-between">
           <h3 className="text-base font-medium">Topics &amp; Subtopics</h3>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled title="Coming soon">
-              <Wand2 className="size-3 mr-1" />
-              Auto-discover
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={discoverMutation.isPending}
+              onClick={() => { setDiscoverResult(null); discoverMutation.mutate(); }}
+            >
+              {discoverMutation.isPending
+                ? <><Spinner className="size-3 mr-1" /> Discovering...</>
+                : <><Wand2 className="size-3 mr-1" /> Auto-discover</>}
             </Button>
             <Button size="sm" onClick={() => setShowAddTopic(true)} disabled={showAddTopic}>
               <Plus className="size-3 mr-1" />
@@ -623,6 +733,20 @@ export function DNASection() {
             </Button>
           </div>
         </div>
+
+        {/* Discovery feedback */}
+        {discoverMutation.isError && (
+          <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" />
+            {discoverMutation.error?.message ?? "Discovery failed. Please try again."}
+          </div>
+        )}
+        {discoverResult && !discoverMutation.isError && (
+          <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <Check className="size-4 shrink-0" />
+            {discoverResult}
+          </div>
+        )}
 
         {/* Add topic inline form */}
         {showAddTopic && (
@@ -640,7 +764,7 @@ export function DNASection() {
           <div className="flex justify-center py-10">
             <Spinner className="size-6 text-muted-foreground" />
           </div>
-        ) : topics.length === 0 && !showAddTopic ? (
+        ) : visibleTopics.length === 0 && !showAddTopic ? (
           <Card className="flex flex-col items-center justify-center gap-3 py-14">
             <Layers className="size-10 text-muted-foreground" />
             <CardContent className="p-0 text-center">
@@ -656,7 +780,9 @@ export function DNASection() {
           </Card>
         ) : (
           <Accordion type="multiple" className="space-y-1">
-            {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((topic) => <TopicItem key={topic.id} topic={topic} />)}
+            {[...visibleTopics].sort((a, b) => a.name.localeCompare(b.name)).map((topic) => (
+              <TopicItem key={topic.id} topic={topic} onSuggestionAction={() => setDiscoverResult(null)} />
+            ))}
           </Accordion>
         )}
       </div>

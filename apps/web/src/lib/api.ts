@@ -405,6 +405,18 @@ export const api = {
       }),
     deleteValue: (id: string) =>
       request<{ success: boolean }>(`/dna/values/${id}`, { method: "DELETE" }),
+    discover: () =>
+      request<{ topicCount: number; subtopicCount: number }>("/dna/discover", { method: "POST" }),
+    updateTopicStatus: (id: string, status: "active" | "rejected") =>
+      request<{ topic: DnaTopic }>(`/dna/topics/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    updateSubtopicStatus: (id: string, status: "active" | "rejected") =>
+      request<{ subtopic: DnaSubtopic }>(`/dna/subtopics/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
   },
   patterns: {
     list: () =>
