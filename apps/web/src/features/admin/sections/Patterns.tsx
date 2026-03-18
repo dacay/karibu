@@ -1,20 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Copy, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api, type ConversationPattern } from "@/lib/api";
 
 // ─── Pattern form ─────────────────────────────────────────────────────────────
 
 interface PatternFormProps {
+  open: boolean;
+  title: string;
   initialName?: string;
   initialDescription?: string;
   initialPrompt?: string;
@@ -25,6 +32,8 @@ interface PatternFormProps {
 }
 
 function PatternForm({
+  open,
+  title,
   initialName = "",
   initialDescription = "",
   initialPrompt = "",
@@ -36,39 +45,70 @@ function PatternForm({
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [prompt, setPrompt] = useState(initialPrompt);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Reset form when dialog opens with new initial values
+  useEffect(() => {
+    if (open) {
+      setName(initialName);
+      setDescription(initialDescription);
+      setPrompt(initialPrompt);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Auto-grow textarea
+  function adjustTextarea() {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
+  useEffect(() => {
+    adjustTextarea();
+  }, [prompt, open]);
 
   const valid = name.trim().length > 0 && prompt.trim().length > 0;
 
   return (
-    <div className="flex flex-col gap-3 p-4 border rounded-lg bg-muted/30">
-      <Input
-        placeholder="Pattern name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        autoFocus
-      />
-      <Input
-        placeholder="Short description (optional)"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-      />
-      <Textarea
-        placeholder="Conversation prompt — describe how the AI should behave, what role it plays, and how it references the Source knowledge."
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        rows={6}
-        className="resize-none text-sm"
-      />
-      <div className="flex gap-2">
-        <Button size="sm" disabled={!valid || isLoading} onClick={() => onSave({ name, description, prompt })}>
-          {isLoading ? <Spinner className="size-3 mr-1" /> : null}
-          {submitLabel}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
-    </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onCancel(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <Input
+            placeholder="Pattern name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+          <Input
+            placeholder="Short description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <textarea
+            ref={textareaRef}
+            placeholder="Conversation prompt — describe how the AI should behave, what role it plays, and how it references the Source knowledge."
+            value={prompt}
+            onChange={(e) => { setPrompt(e.target.value); adjustTextarea(); }}
+            className="w-full resize-none overflow-y-auto rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[8rem] max-h-[24rem]"
+            style={{ height: "auto" }}
+          />
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" disabled={!valid || isLoading} onClick={() => onSave({ name, description, prompt })}>
+              {isLoading ? <Spinner className="size-3 mr-1" /> : null}
+              {submitLabel}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -97,9 +137,11 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["patterns"] }),
   });
 
-  if (editing) {
-    return (
+  return (
+    <>
       <PatternForm
+        open={editing}
+        title="Edit Pattern"
         initialName={pattern.name}
         initialDescription={pattern.description}
         initialPrompt={pattern.prompt}
@@ -108,10 +150,6 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
         isLoading={updateMutation.isPending}
         submitLabel="Update"
       />
-    );
-  }
-
-  return (
     <Card className="group">
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
@@ -171,6 +209,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
         </p>
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -219,25 +258,23 @@ export function PatternsSection() {
             Define how the AI engages with learners during microlearning sessions.
           </p>
         </div>
-        {!creating && (
-          <Button size="sm" onClick={() => setCreating(true)}>
+        <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="size-4 mr-1" />
             New Pattern
           </Button>
-        )}
       </div>
 
-      {creating && (
-        <PatternForm
-          initialName={templateValues ? `${templateValues.name} (copy)` : ""}
-          initialDescription={templateValues?.description ?? ""}
-          initialPrompt={templateValues?.prompt ?? ""}
-          onSave={(values) => createMutation.mutate(values)}
-          onCancel={handleCancelCreate}
-          isLoading={createMutation.isPending}
-          submitLabel="Create Pattern"
-        />
-      )}
+      <PatternForm
+        open={creating}
+        title={templateValues ? "New Pattern (from template)" : "New Pattern"}
+        initialName={templateValues ? `${templateValues.name} (copy)` : ""}
+        initialDescription={templateValues?.description ?? ""}
+        initialPrompt={templateValues?.prompt ?? ""}
+        onSave={(values) => createMutation.mutate(values)}
+        onCancel={handleCancelCreate}
+        isLoading={createMutation.isPending}
+        submitLabel="Create Pattern"
+      />
 
       {isLoading && (
         <div className="flex justify-center py-12">
