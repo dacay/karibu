@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Sun, Moon, Monitor, ChevronDown, ArrowLeft, CheckCircle2,
+  Sun, Moon, Monitor, ChevronDown, ArrowLeft, CheckCircle2, RotateCcw,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/hooks/useAuth";
@@ -65,9 +65,14 @@ const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementTyp
 export default function MicrolearningChatPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, isLoading: authLoading, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
+
+  // Admin test mode: opened via the Test button in the admin view
+  const isAdminTest = user?.role === "admin" && searchParams.get("test") === "true";
+  const [adminTestChatId, setAdminTestChatId] = useState<string>(() => crypto.randomUUID());
 
   // Resolved chatId + prior messages — set once when the session loads
   const chatIdRef = useRef<string | null>(null);
@@ -86,10 +91,11 @@ export default function MicrolearningChatPage() {
   // Load previous chat session (chatId + messages) for this ML.
   // gcTime: 0 clears the cache on unmount so each visit fetches fresh data.
   // staleTime: Infinity prevents background refetches while the page is open.
+  // Admin test sessions always start fresh — skip loading previous chat history
   const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ["chat", "ml", id],
     queryFn: () => api.chat.loadMLSession(id),
-    enabled: !!id && !!user,
+    enabled: !!id && !!user && !isAdminTest,
     staleTime: Infinity,
     gcTime: 0,
   });
@@ -103,14 +109,16 @@ export default function MicrolearningChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Resolve chatId: use existing one if found, otherwise generate a stable new one
-  if (!chatIdRef.current) {
+  // Resolve chatId: use existing one if found, otherwise generate a stable new one.
+  // In admin test mode, use a fresh UUID so each test (and each restart) is isolated.
+  if (!isAdminTest && !chatIdRef.current) {
     if (sessionData) {
       chatIdRef.current = sessionData.chatId ?? crypto.randomUUID();
       initialMessagesRef.current = (sessionData.messages as UIMessage[]) ?? [];
     }
   }
-  const chatId = chatIdRef.current ?? crypto.randomUUID();
+  const chatId = isAdminTest ? adminTestChatId : (chatIdRef.current ?? crypto.randomUUID());
+  const initialMessages: UIMessage[] = isAdminTest ? [] : initialMessagesRef.current;
 
   // Load user profile (for preferred avatar — only for non-admin users)
   const { data: profileData } = useQuery({
@@ -170,6 +178,12 @@ export default function MicrolearningChatPage() {
     return buildChatAvatar(ml.avatar);
   }, [mlData, profileData, avatarsData, user?.role]);
 
+  // Restart the admin test session with a fresh chat ID and no prior messages
+  const handleRestart = useCallback(() => {
+    setAdminTestChatId(crypto.randomUUID());
+    setIsCompleted(false);
+  }, []);
+
   const handleComplete = useCallback(() => {
     setIsCompleted(true);
     // fireConfetti();
@@ -227,7 +241,14 @@ export default function MicrolearningChatPage() {
           </div>
         </div>
 
-        {/* Account dropdown */}
+        {/* Right side: restart button (admin test only) + account dropdown */}
+        <div className="flex items-center gap-2">
+        {isAdminTest && (
+          <Button variant="outline" size="sm" onClick={handleRestart} className="gap-1.5">
+            <RotateCcw className="size-3.5" />
+            Restart
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 h-9 px-2">
@@ -300,14 +321,16 @@ export default function MicrolearningChatPage() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </header>
 
       {/* Chat interface fills remaining height */}
       <div className="flex-1 overflow-hidden">
         <ChatInterface
+          key={isAdminTest ? adminTestChatId : undefined}
           endpoint={CHAT_ENDPOINTS.ml}
           chatId={chatId}
-          initialMessages={initialMessagesRef.current}
+          initialMessages={initialMessages}
           microlearningId={id}
           avatar={effectiveAvatar}
           autoPlayVoice={false}
