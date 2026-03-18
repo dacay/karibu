@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { eq, and, inArray } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
-import { openai, elevenlabs } from '../ai/mastra.js';
+import { openai, deepgram } from '../ai/mastra.js';
 import { saveChat, loadChat } from '../services/chat.js';
 import { queryDocuments } from '../services/chromadb.js';
 import { db } from '../db/index.js';
@@ -529,15 +529,16 @@ const ttsSchema = z.object({
   voiceId: z.string().min(1).optional(),
 });
 
-const DEFAULT_VOICE_ID = process.env.DEFAULT_VOICE_ID ?? '56AoDkrOh6qfVPDXZ7Pt'; // ElevenLabs "Cassidy"
+const DEFAULT_VOICE_ID = process.env.DEFAULT_VOICE_ID ?? 'aura-asteria-en'; // Deepgram "Asteria"
 
 /**
  * POST /chat/tts
- * Convert text to speech using ElevenLabs and stream back MP3 audio.
+ * Convert text to speech using Deepgram and stream back MP3 audio.
+ * For Deepgram, the voiceId is the model name (e.g. "aura-asteria-en").
  */
 chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
 
-  if (!env.ELEVENLABS_API_KEY) {
+  if (!env.DEEPGRAM_API_KEY) {
     return c.json({ error: 'TTS is not configured on this server.' }, 400);
   }
 
@@ -546,9 +547,8 @@ chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
   try {
 
     const result = await generateSpeech({
-      model: elevenlabs.speech('eleven_multilingual_v2'),
+      model: deepgram.speech(voiceId),
       text,
-      voice: voiceId,
     });
 
     return new Response(result.audio.uint8Array.buffer as ArrayBuffer, {
@@ -570,12 +570,12 @@ chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
 
 /**
  * POST /chat/transcribe
- * Transcribe an audio file to text using ElevenLabs scribe_v1.
+ * Transcribe an audio file to text using Deepgram nova-2.
  * Accepts multipart/form-data with an `audio` field.
  */
 chat.post('/transcribe', async (c) => {
 
-  if (!env.ELEVENLABS_API_KEY) {
+  if (!env.DEEPGRAM_API_KEY) {
     return c.json({ error: 'Transcription is not configured on this server.' }, 400);
   }
 
@@ -589,11 +589,8 @@ chat.post('/transcribe', async (c) => {
     }
 
     const result = await transcribe({
-      model: elevenlabs.transcription('scribe_v1'),
+      model: deepgram.transcription('nova-2'),
       audio: new Uint8Array(await file.arrayBuffer()),
-      providerOptions: {
-        elevenlabs: { languageCode: 'en' },
-      },
     });
 
     return c.json({ text: result.text });

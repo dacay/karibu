@@ -17,6 +17,7 @@
     "db:add-admin": "tsx src/scripts/add-admin.ts"
   },
   "dependencies": {
+    "@ai-sdk/deepgram": "^2.0.24",
     "@ai-sdk/elevenlabs": "^2.0.20",
     "@ai-sdk/openai": "^3.0.29",
     "@aws-sdk/client-cloudfront": "^3.1010.0",

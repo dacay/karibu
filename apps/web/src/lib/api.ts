@@ -150,26 +150,26 @@ export interface Avatar {
   updatedAt: string;
 }
 
-export interface ElevenLabsVoice {
+export interface DeepgramVoice {
   id: string;
   name: string;
   gender: "male" | "female";
   description: string;
 }
 
-export const ELEVENLABS_VOICES: ElevenLabsVoice[] = [
+export const DEEPGRAM_VOICES: DeepgramVoice[] = [
   // Female voices
-  { id: "56AoDkrOh6qfVPDXZ7Pt", name: "Cassidy", gender: "female", description: "Crisp, direct and clear" },
-  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", gender: "female", description: "Strong, expressive" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", gender: "female", description: "Soft, pleasant" },
-  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", gender: "female", description: "Warm, emotional" },
-  { id: "LcfcDJNUP1GQjkzn1xUU", name: "Emily", gender: "female", description: "Calm, clear" },
+  { id: "aura-asteria-en", name: "Asteria", gender: "female", description: "Warm and friendly" },
+  { id: "aura-luna-en", name: "Luna", gender: "female", description: "Calm, professional" },
+  { id: "aura-stella-en", name: "Stella", gender: "female", description: "Energetic, upbeat" },
+  { id: "aura-athena-en", name: "Athena", gender: "female", description: "Clear, authoritative" },
+  { id: "aura-hera-en", name: "Hera", gender: "female", description: "Formal, confident" },
   // Male voices
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", gender: "male", description: "Deep, authoritative" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", gender: "male", description: "Well-rounded, engaging" },
-  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", gender: "male", description: "Crisp, confident" },
-  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", gender: "male", description: "Deep, conversational" },
-  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", gender: "male", description: "Raspy, strong" },
+  { id: "aura-orion-en", name: "Orion", gender: "male", description: "Deep, resonant" },
+  { id: "aura-arcas-en", name: "Arcas", gender: "male", description: "Neutral, balanced" },
+  { id: "aura-perseus-en", name: "Perseus", gender: "male", description: "Clear, engaging" },
+  { id: "aura-orpheus-en", name: "Orpheus", gender: "male", description: "Rich, expressive" },
+  { id: "aura-zeus-en", name: "Zeus", gender: "male", description: "Bold, commanding" },
 ];
 
 export interface Microlearning {

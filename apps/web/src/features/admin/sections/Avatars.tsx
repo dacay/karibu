@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
-import { api, type Avatar, ELEVENLABS_VOICES } from "@/lib/api";
+import { api, type Avatar, DEEPGRAM_VOICES } from "@/lib/api";
 import { useTTS } from "@/features/chat/hooks/useTTS";
 import { useAvatarImageVersion, useBumpAvatarImageVersion } from "@/hooks/useAvatarImageVersion";
 import { getAssetUrl } from "@/lib/assets";
@@ -31,8 +31,8 @@ interface VoiceSelectorProps {
 }
 
 function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
-  const female = ELEVENLABS_VOICES.filter((v) => v.gender === "female");
-  const male = ELEVENLABS_VOICES.filter((v) => v.gender === "male");
+  const female = DEEPGRAM_VOICES.filter((v) => v.gender === "female");
+  const male = DEEPGRAM_VOICES.filter((v) => v.gender === "male");
   const { state, speak, stop } = useTTS();
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
 
@@ -58,7 +58,7 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
     return previewingVoiceId === voiceId && (state === "loading" || state === "playing");
   }
 
-  function renderVoiceGroup(voices: typeof ELEVENLABS_VOICES, label: string) {
+  function renderVoiceGroup(voices: typeof DEEPGRAM_VOICES, label: string) {
     return (
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
@@ -203,7 +203,7 @@ function AvatarForm({
 }: AvatarFormProps) {
   const [name, setName] = useState(initial.name ?? "");
   const [personality, setPersonality] = useState(initial.personality ?? "");
-  const [voiceId, setVoiceId] = useState(initial.voiceId ?? ELEVENLABS_VOICES[0].id);
+  const [voiceId, setVoiceId] = useState(initial.voiceId ?? DEEPGRAM_VOICES[0].id);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [existingImageUrl] = useState<string | null>(initial.existingImageUrl ?? null);
   const [imageRemoved, setImageRemoved] = useState(false);
@@ -287,7 +287,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
   const avatarImageVersion = useAvatarImageVersion();
   const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
-  const voice = ELEVENLABS_VOICES.find((v) => v.id === avatar.voiceId);
+  const voice = DEEPGRAM_VOICES.find((v) => v.id === avatar.voiceId);
   const imageUrl = getAvatarImageUrl(avatar, avatarImageVersion);
 
   const updateMutation = useMutation({
