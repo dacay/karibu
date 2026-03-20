@@ -398,10 +398,12 @@ The tool returns results in labeled sections:
 - [Document Knowledge] — relevant excerpts from uploaded documents. Use when source knowledge is insufficient.
 - If neither section appears, no organizational knowledge was found.
 
-After writing your response, you MUST call reportSource to declare which knowledge source you actually used. Choose:
-- "source" if your answer relied on [Source Knowledge]
-- "document" if your answer relied on [Document Knowledge]
-- "general" if the search results were irrelevant to the question and you answered from your own general knowledge. In this case, also mention in your response that the answer is based on general knowledge.`;
+IMPORTANT: Never include the section labels [Source Knowledge] or [Document Knowledge] in your response text. They are internal markers only.
+
+You MUST call reportSource before writing your response. Choose:
+- "source" if your answer will rely on [Source Knowledge]
+- "document" if your answer will rely on [Document Knowledge]
+- "general" if the search results were irrelevant and you will answer from general knowledge`;
 
 const assistantChatSchema = z.object({
   chatId: z.string().min(1),
@@ -427,6 +429,7 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   // Track the best knowledge source used during this response:
   // null = tool not called, 'source' = approved values, 'document' = vector DB, 'general' = LLM only
   let dataSource: 'source' | 'document' | 'general' | null = null;
+  let searchWasCalled = false;
 
   const result = streamText({
     model: openai('gpt-4o'),
@@ -440,7 +443,7 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
           query: z.string().describe('Search query to find relevant organizational knowledge'),
         }),
         execute: async ({ query }) => {
-
+          searchWasCalled = true;
           const sections: string[] = [];
 
           // Phase 1: Fetch approved source values for the organization
@@ -504,8 +507,8 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
     messageMetadata: ({ part }) => {
-      if (part.type === 'finish' && dataSource) {
-        return { dataSource };
+      if (part.type === 'finish' && (dataSource ?? (searchWasCalled ? 'general' : null))) {
+        return { dataSource: dataSource ?? 'general' };
       }
     },
     onFinish: ({ messages: updatedMessages }) => {
