@@ -25,6 +25,17 @@ The "Auto-discover" button in the DNA section (`/dna`) calls `POST /dna/discover
 - Rejecting hides the item from the list (`status: rejected` filtered out in display)
 - Success/error feedback appears inline below the toolbar
 
+## Admin ML Test Mode
+
+Admins can test a microlearning from the admin panel via the **Test** button in the ML row's dropdown. This opens `/ml/{id}?test=true` in a new tab.
+
+When `?test=true` is present and the user is an admin:
+- Previous chat history is **not loaded** — every page load starts a fresh session with a new chat ID
+- A **Restart** button appears in the chat header (left of the Voice toggle) to start another fresh session without leaving the page
+- Old test chats are preserved in the DB but never surfaced to the admin
+
+Learner behavior is completely unaffected by this parameter.
+
 ## Message Flagging
 
 Learners can flag any chat message (ML or assistant) as potentially inaccurate via a hover-revealed flag button. Admins review flags at `/flagged`.
