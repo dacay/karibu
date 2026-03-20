@@ -51,6 +51,20 @@ export function useTTS(): UseTTSReturn {
     stop();
     setState("loading");
 
+    const plain = text
+      .replace(/#{1,6}\s+/g, "")           // headings
+      .replace(/\*\*(.+?)\*\*/g, "$1")     // bold
+      .replace(/\*(.+?)\*/g, "$1")         // italic
+      .replace(/~~(.+?)~~/g, "$1")         // strikethrough
+      .replace(/`{1,3}([^`]*)`{1,3}/g, "$1")  // inline code / code blocks → keep content
+      .replace(/^\s*[-*+]\s+/gm, "")       // unordered list markers
+      .replace(/^\s*\d+\.\s+/gm, "")       // ordered list markers
+      .replace(/\[(.+?)\]\(.+?\)/g, "$1")  // links → label only
+      .replace(/!?\[.*?\]\(.*?\)/g, "")    // images
+      .replace(/^[-*_]{3,}$/gm, "")        // horizontal rules
+      .replace(/\n{2,}/g, " ")             // collapse extra newlines
+      .trim();
+
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -65,7 +79,7 @@ export function useTTS(): UseTTSReturn {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ text, voiceId }),
+        body: JSON.stringify({ text: plain, voiceId }),
       });
 
       if (!res.ok) {
