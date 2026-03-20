@@ -22,8 +22,14 @@ export function useTTS(): UseTTSReturn {
   const [state, setState] = useState<TTSState>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const cleanup = useCallback(() => {
+    if (abortRef.current) {
+
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
@@ -45,12 +51,16 @@ export function useTTS(): UseTTSReturn {
     stop();
     setState("loading");
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
 
       const token = getToken();
 
       const res = await fetch(TTS_ENDPOINT, {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -84,7 +94,10 @@ export function useTTS(): UseTTSReturn {
         audio.play().catch(reject);
       });
 
-    } catch {
+    } catch (err) {
+
+      if (err instanceof Error && err.name === "AbortError") return;
+
       cleanup();
       setState("error");
     }

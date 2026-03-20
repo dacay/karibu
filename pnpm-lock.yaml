@@ -10,6 +10,9 @@ importers:
 
   apps/backend:
     dependencies:
+      '@ai-sdk/deepgram':
+        specifier: ^2.0.24
+        version: 2.0.24(zod@4.3.6)
       '@ai-sdk/elevenlabs':
         specifier: ^2.0.20
         version: 2.0.20(zod@4.3.6)
@@ -238,6 +241,12 @@ packages:
     resolution: {integrity: sha512-VTDuRS5V0ATbJ/LkaQlisMnTAeYKXAK6scMguVBstf+KIBQ7HIuKhiXLv+G/hvejkV+THoXzoNifInAkU81P1g==}
     engines: {node: '>=18'}
 
+  '@ai-sdk/deepgram@2.0.24':
+    resolution: {integrity: sha512-htT1Y7vBN0cRu/1pGnhx6DNH3xaNr0o0MjDkmii48X2+6S/WkOzVNtMjn7V3vLWEQIWNio5vw1hG/F43K8WLHA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/elevenlabs@2.0.20':
     resolution: {integrity: sha512-er+hlxKBNMP168sdAgzFkoH1sWNcJssg7SP7TMSWO3TjMrJmNgUsQpNMDSYzoaP6F+PlZwINaG/fkKz8h5SVuw==}
     engines: {node: '>=18'}
@@ -282,6 +291,12 @@ packages:
 
   '@ai-sdk/provider-utils@4.0.15':
     resolution: {integrity: sha512-8XiKWbemmCbvNN0CLR9u3PQiet4gtEVIrX4zzLxnCj06AwsEDJwJVBbKrEI4t6qE8XRSIvU2irka0dcpziKW6w==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@4.0.19':
+    resolution: {integrity: sha512-3eG55CrSWCu2SXlqq2QCsFjo3+E7+Gmg7i/oRVoSZzIodTuDSfLb3MRje67xE9RFea73Zao7Lm4mADIfUETKGg==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -6485,6 +6500,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@ai-sdk/deepgram@2.0.24(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.19(zod@4.3.6)
+      zod: 4.3.6
+
   '@ai-sdk/elevenlabs@2.0.20(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
@@ -6533,6 +6554,13 @@ snapshots:
       zod: 4.3.6
 
   '@ai-sdk/provider-utils@4.0.15(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 4.3.6
+
+  '@ai-sdk/provider-utils@4.0.19(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@standard-schema/spec': 1.1.0
