@@ -16,4 +16,6 @@ export interface ChatConfig {
   className?: string;
   /** Called when the backend signals that the microlearning is completed */
   onComplete?: () => void;
+  /** When provided, shows a Restart button left of the Voice toggle */
+  onRestart?: () => void;
 }

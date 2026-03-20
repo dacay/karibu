@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { Keyboard, Mic } from "lucide-react";
+import { Keyboard, Mic, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatMessages } from "./ChatMessages";
@@ -35,6 +35,7 @@ export function ChatInterface({
   autoPlayVoice = false,
   className,
   onComplete,
+  onRestart,
 }: ChatConfig) {
 
   const resolvedAvatar = { ...DEFAULT_AVATAR, ...avatar };
@@ -230,6 +231,19 @@ export function ChatInterface({
             <p className="text-xs text-muted-foreground">Speaking...</p>
           )}
         </div>
+        {onRestart && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRestart}
+            className="flex items-center gap-1.5 shrink-0"
+            aria-label="Restart session"
+          >
+            <RotateCcw className="size-4" />
+            <span>Restart</span>
+          </Button>
+        )}
         <Button
           type="button"
           variant={mode === "voice" ? "default" : "outline"}
