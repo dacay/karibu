@@ -40,7 +40,7 @@ const envSchema = z.object({
   // AI / LLM
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
-  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  DEEPGRAM_API_KEY: z.string().min(1).optional(),
 
   // AWS S3
   AWS_REGION: z.string().min(1).optional(),
