@@ -255,9 +255,12 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
     },
   });
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const deleteMutation = useMutation({
     mutationFn: () => api.dna.deleteSubtopic(subtopic.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+    onError: (err: Error) => setDeleteError(err.message),
   });
 
   const isRunning = subtopic.synthesisStatus === "running" || synthesizeMutation.isPending;
@@ -333,7 +336,7 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
               size="icon"
               className="shrink-0 text-muted-foreground hover:text-destructive"
               disabled={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate()}
+              onClick={() => { setDeleteError(null); deleteMutation.mutate(); }}
               aria-label={`Delete subtopic ${subtopic.name}`}
             >
               {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
@@ -347,6 +350,17 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
         <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertCircle className="size-4 shrink-0" />
           {synthesizeMutation.error?.message ?? "Synthesis failed. Please try again."}
+        </div>
+      )}
+
+      {/* Delete error */}
+      {deleteError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <AlertCircle className="size-4 shrink-0" />
+          <span className="flex-1">{deleteError}</span>
+          <Button variant="ghost" size="icon" className="size-5 shrink-0 text-destructive hover:text-destructive" onClick={() => setDeleteError(null)}>
+            <X className="size-3" />
+          </Button>
         </div>
       )}
 
@@ -391,6 +405,7 @@ function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestio
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(topic.name);
   const [editDescription, setEditDescription] = useState(topic.description ?? "");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const statusMutation = useMutation({
     mutationFn: (status: "active" | "rejected") => api.dna.updateTopicStatus(topic.id, status),
@@ -403,6 +418,7 @@ function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestio
   const deleteMutation = useMutation({
     mutationFn: () => api.dna.deleteTopic(topic.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+    onError: (err: Error) => setDeleteError(err.message),
   });
 
   const updateMutation = useMutation({
@@ -470,7 +486,7 @@ function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestio
             <Button asChild variant="ghost" size="icon">
               <span
                 className={`size-7 shrink-0 text-muted-foreground hover:text-destructive mr-1 ${deleteMutation.isPending ? "pointer-events-none opacity-50" : ""}`}
-                onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(); }}
+                onClick={(e) => { e.stopPropagation(); setDeleteError(null); deleteMutation.mutate(); }}
                 aria-label={`Delete topic ${topic.name}`}
               >
                 {deleteMutation.isPending ? <Spinner className="size-4" /> : <Trash2 className="size-4" />}
@@ -481,6 +497,15 @@ function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestio
       </AccordionTrigger>
       <AccordionContent>
         <div className="space-y-3 pt-1">
+          {deleteError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertCircle className="size-4 shrink-0" />
+              <span className="flex-1">{deleteError}</span>
+              <Button variant="ghost" size="icon" className="size-5 shrink-0 text-destructive hover:text-destructive" onClick={() => setDeleteError(null)}>
+                <X className="size-3" />
+              </Button>
+            </div>
+          )}
           {editing ? (
             <div className="flex flex-col gap-2 p-3 border rounded-lg bg-muted/30">
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Topic name" />
