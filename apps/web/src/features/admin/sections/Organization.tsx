@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff, UserCircle } from "lucide-react";
 import Image from "next/image";
-import { api, type OrgConfig } from "@/lib/api";
+import { api, type OrgConfig, type Avatar } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { useBumpLogoVersion } from "@/hooks/useLogoVersion";
 import { getLogoUrl } from "@/lib/assets";
+import { getAssetUrl } from "@/lib/assets";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,13 +146,20 @@ export function OrganizationSection() {
     queryFn: api.org.getConfig,
   });
 
+  const { data: avatarsData } = useQuery({
+    queryKey: ["avatars"],
+    queryFn: api.avatars.list,
+  });
+
   const [name, setName] = useState("");
   const [pronunciation, setPronunciation] = useState("");
   const [learnerTerm, setLearnerTerm] = useState("user");
   const [learnerTermPlural, setLearnerTermPlural] = useState("users");
   const [expirationIntervalHours, setExpirationIntervalHours] = useState(8);
+  const [defaultAvatarId, setDefaultAvatarId] = useState<string | null>(null);
   const [identitySaveStatus, setIdentitySaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [sessionSaveStatus, setSessionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [avatarSaveStatus, setAvatarSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     if (config) {
@@ -160,6 +168,7 @@ export function OrganizationSection() {
       setLearnerTerm(config.learnerTerm);
       setLearnerTermPlural(config.learnerTermPlural);
       setExpirationIntervalHours(config.expirationIntervalHours);
+      setDefaultAvatarId(config.defaultAvatarId);
     }
   }, [config]);
 
@@ -193,6 +202,25 @@ export function OrganizationSection() {
     },
   });
 
+  const avatarMutation = useMutation({
+    mutationFn: (body: { defaultAvatarId: string | null }) =>
+      api.org.updateConfig(body),
+    onMutate: () => setAvatarSaveStatus("saving"),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["org", "config"], updated);
+      setAvatarSaveStatus("saved");
+      setTimeout(() => setAvatarSaveStatus("idle"), 2000);
+    },
+    onError: () => {
+      setAvatarSaveStatus("error");
+      setTimeout(() => setAvatarSaveStatus("idle"), 3000);
+    },
+  });
+
+  function handleAvatarSave() {
+    avatarMutation.mutate({ defaultAvatarId });
+  }
+
   function handleIdentitySave() {
     identityMutation.mutate({
       name: name.trim(),
@@ -214,6 +242,11 @@ export function OrganizationSection() {
 
   const isSessionDirty =
     expirationIntervalHours !== (config?.expirationIntervalHours ?? 8);
+
+  const isAvatarDirty =
+    defaultAvatarId !== (config?.defaultAvatarId ?? null);
+
+  const allAvatars = avatarsData?.avatars ?? [];
 
   return (
     <div className="space-y-6">
@@ -390,6 +423,89 @@ export function OrganizationSection() {
                   </span>
                 )}
                 {sessionSaveStatus === "error" && (
+                  <span className="flex items-center gap-1 text-sm text-destructive">
+                    <AlertCircle className="size-3.5" />
+                    Failed to save.
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Default assistant avatar */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserCircle className="size-4" />
+                Default assistant
+              </CardTitle>
+              <CardDescription>
+                The default avatar used in conversations. Learners can override this with their own preference.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="default-avatar">Avatar</Label>
+                <select
+                  id="default-avatar"
+                  value={defaultAvatarId ?? ""}
+                  onChange={(e) => setDefaultAvatarId(e.target.value || null)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">None (use microlearning avatar)</option>
+                  {allAvatars.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}{a.isBuiltIn ? " (built-in)" : ""}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  This avatar will be used as the default for learners who have not chosen their own assistant.
+                </p>
+              </div>
+
+              {defaultAvatarId && (() => {
+                const selected = allAvatars.find((a) => a.id === defaultAvatarId);
+                if (!selected) return null;
+                return (
+                  <div className="flex items-center gap-3 rounded-md border p-3">
+                    {selected.imageS3Key ? (
+                      <Image
+                        src={getAssetUrl(selected.imageS3Key)}
+                        alt={selected.name}
+                        width={40}
+                        height={40}
+                        className="rounded-full object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                        <UserCircle className="size-5 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{selected.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{selected.personality?.slice(0, 80)}{(selected.personality?.length ?? 0) > 80 ? "..." : ""}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  onClick={handleAvatarSave}
+                  disabled={!isAvatarDirty || avatarSaveStatus === "saving"}
+                  size="sm"
+                >
+                  {avatarSaveStatus === "saving" && <Spinner className="mr-1.5" />}
+                  {avatarSaveStatus === "saving" ? "Saving..." : "Save changes"}
+                </Button>
+
+                {avatarSaveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-sm text-green-600">
+                    <CheckCircle className="size-3.5" />
+                    Saved.
+                  </span>
+                )}
+                {avatarSaveStatus === "error" && (
                   <span className="flex items-center gap-1 text-sm text-destructive">
                     <AlertCircle className="size-3.5" />
                     Failed to save.
