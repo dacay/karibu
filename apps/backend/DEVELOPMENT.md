@@ -133,8 +133,21 @@ Each bucket has its own key prefix env var (`S3_DOCS_KEY_PREFIX`, `S3_ASSETS_KEY
 - Same subdomain-scoped pattern. Uploaded by admins via the Organization config page.
 - Uploaded with `Cache-Control: no-cache` so CloudFront revalidates on every request (logos change infrequently but must propagate immediately).
 
+### CloudFront Cache Invalidation
+
+When avatar images or org logos are uploaded/updated, the backend creates a targeted CloudFront invalidation for the specific S3 key path so the CDN serves the new file immediately.
+
+- Requires `CLOUDFRONT_DISTRIBUTION_ID` env var (optional — silently skipped when absent)
+- Reuses the same AWS credentials (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`)
+- Invalidation is fire-and-forget: failures log a warning but don't fail the upload
+
+**Affected routes:**
+- `POST /avatars` — new avatar with image
+- `PATCH /avatars/:id` — image replacement
+- `POST /org/logo` — logo upload
+
 ### AWS IAM — Minimal Policy
-The backend IAM user needs access to both buckets:
+The backend IAM user needs access to both buckets plus CloudFront invalidation:
 ```json
 {
   "Statement": [
@@ -148,6 +161,11 @@ The backend IAM user needs access to both buckets:
     },
     {
       "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::ACCOUNT_ID:distribution/DISTRIBUTION_ID"
+    },
+    {
+      "Effect": "Allow",
       "Action": ["kms:GenerateDataKey", "kms:Decrypt"],
       "Resource": "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID"
     }
@@ -158,6 +176,50 @@ Note: KMS permissions must reference the KMS key ARN, not the S3 bucket ARN.
 
 ### ChromaDB Pipeline
 The ChromaDB service (`src/services/chromadb.ts`) is fully built with `addDocumentChunks`, `deleteDocumentChunks`, and `queryDocuments`, but is **not yet wired into the document upload route**. Documents are uploaded to S3 and recorded in the DB with status `uploaded` — parsing, chunking, and embedding into ChromaDB still need to be connected.
+
+## DNA Auto-Discovery
+
+The auto-discover feature analyzes all processed document chunks in ChromaDB and uses GPT-4o to suggest topic/subtopic structures.
+
+### Flow
+1. Admin clicks "Auto-discover" in the DNA section
+2. `POST /dna/discover` samples up to 40 chunks from ChromaDB (no specific query — broad content analysis)
+3. GPT-4o analyzes the excerpts and returns 3-6 topics with 2-4 subtopics each (JSON)
+4. Topics/subtopics are inserted with `source: 'discovered', status: 'suggested'`
+5. Existing topic names (case-insensitive) are skipped to avoid duplicates
+6. Admin reviews suggestions — Accept promotes to `active`, Reject hides from list
+
+### API Routes
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/dna/discover` | admin | Analyze documents and suggest topics/subtopics |
+| `PATCH` | `/dna/topics/:id/status` | admin | Accept (`active`) or reject a suggested topic |
+| `PATCH` | `/dna/subtopics/:id/status` | admin | Accept (`active`) or reject a suggested subtopic |
+
+### ChromaDB Dependency
+Requires processed documents (status `processed` in DB and chunks in ChromaDB). Uses `sampleDocumentChunks()` from `src/services/chromadb.ts` which calls `collection.get()` with org filter.
+
+## Message Flagging
+
+### Data Model
+
+`flagged_messages` table (`src/db/schema.ts`):
+- `message_id` — FK to `chat_messages` (cascade delete)
+- `chat_id` — FK to `chats` (cascade delete)
+- `flagged_by` — FK to `users` (cascade delete)
+- `organization_id` — FK to `organizations` (cascade delete)
+- `reason` — optional free-text from the learner
+- `status` — `open | reviewed | dismissed` (enum: `flagged_message_status`)
+
+### API Routes (`src/routes/flags.ts`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/flags` | any user | Flag a message; validates message belongs to caller's org |
+| `GET` | `/flags/count` | admin | Returns `{ count }` of open flags for the org |
+| `GET` | `/flags` | admin | Full list with message text, chat type, ML title, flagging user |
+| `PATCH` | `/flags/:id/status` | admin | Update status to `reviewed` or `dismissed` |
 
 ## AI Assistant Notes
 

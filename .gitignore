@@ -42,6 +42,7 @@ dist/
 .cursor/
 .cursorrules
 *.md
+!docs/*.md
 !DEVELOPMENT.md
 !README.md
 !CONVENTIONS.md

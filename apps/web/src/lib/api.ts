@@ -1,4 +1,4 @@
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   const template = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   if (!template.includes("{subdomain}") || typeof window === "undefined") return template;
   const subdomain = window.location.hostname.split(".")[0];
@@ -7,7 +7,7 @@ function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
-function getToken(): string | null {
+export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("karibu_token");
 }
@@ -150,26 +150,26 @@ export interface Avatar {
   updatedAt: string;
 }
 
-export interface ElevenLabsVoice {
+export interface DeepgramVoice {
   id: string;
   name: string;
   gender: "male" | "female";
   description: string;
 }
 
-export const ELEVENLABS_VOICES: ElevenLabsVoice[] = [
+export const DEEPGRAM_VOICES: DeepgramVoice[] = [
   // Female voices
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", gender: "female", description: "Calm, professional" },
-  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", gender: "female", description: "Strong, expressive" },
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Bella", gender: "female", description: "Soft, pleasant" },
-  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", gender: "female", description: "Warm, emotional" },
-  { id: "LcfcDJNUP1GQjkzn1xUU", name: "Emily", gender: "female", description: "Calm, clear" },
+  { id: "aura-2-asteria-en", name: "Asteria", gender: "female", description: "Warm and friendly" },
+  { id: "aura-2-luna-en", name: "Luna", gender: "female", description: "Calm, professional" },
+  { id: "aura-2-aurora-en", name: "Aurora", gender: "female", description: "Bright, energetic" },
+  { id: "aura-2-athena-en", name: "Athena", gender: "female", description: "Clear, authoritative" },
+  { id: "aura-2-hera-en", name: "Hera", gender: "female", description: "Formal, confident" },
   // Male voices
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", gender: "male", description: "Deep, authoritative" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", gender: "male", description: "Well-rounded, engaging" },
-  { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", gender: "male", description: "Crisp, confident" },
-  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", gender: "male", description: "Deep, conversational" },
-  { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", gender: "male", description: "Raspy, strong" },
+  { id: "aura-2-orion-en", name: "Orion", gender: "male", description: "Deep, resonant" },
+  { id: "aura-2-arcas-en", name: "Arcas", gender: "male", description: "Neutral, balanced" },
+  { id: "aura-2-apollo-en", name: "Apollo", gender: "male", description: "Clear, engaging" },
+  { id: "aura-2-orpheus-en", name: "Orpheus", gender: "male", description: "Rich, expressive" },
+  { id: "aura-2-zeus-en", name: "Zeus", gender: "male", description: "Bold, commanding" },
 ];
 
 export interface Microlearning {
@@ -202,6 +202,19 @@ export interface MicrolearningWithDetails extends Microlearning {
   topic: { id: string; name: string } | null;
   progress: MicrolearningProgress | null;
 }
+
+export interface LearnerFeedML extends MicrolearningWithDetails {
+  sequenceName: string | null;
+}
+
+export interface LearnerFeed {
+  active: LearnerFeedML[];
+  archive: LearnerFeedML[];
+  expirationIntervalMs: number;
+}
+
+// Default fallback inactivity window (overridden by org config returned in the feed)
+export const DEFAULT_INACTIVITY_WINDOW_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 export interface UserProfile {
   id: string;
@@ -262,6 +275,28 @@ export interface OrgConfig {
   pronunciation: string | null;
   learnerTerm: string;
   learnerTermPlural: string;
+  expirationIntervalHours: number;
+}
+
+export interface FlaggedMessage {
+  id: string;
+  messageId: string;
+  chatId: string;
+  reason: string | null;
+  status: "open" | "reviewed" | "dismissed";
+  createdAt: string;
+  updatedAt: string;
+  flaggedByEmail: string;
+  message: {
+    role: string;
+    parts: unknown;
+    createdAt: string;
+  };
+  chat: {
+    type: "microlearning" | "discussion";
+    microlearningId: string | null;
+    microlearningTitle: string | null;
+  };
 }
 
 export interface DashboardMetrics {
@@ -299,6 +334,11 @@ export interface DashboardMetrics {
     maxMessages: number | null;
   };
   completionsThisMonth: number;
+}
+
+export interface MLChatSession {
+  chatId: string | null;
+  messages: unknown[]; // UIMessage[] — typed at the call site
 }
 
 // ----- Namespaced API client -----
@@ -365,6 +405,18 @@ export const api = {
       }),
     deleteValue: (id: string) =>
       request<{ success: boolean }>(`/dna/values/${id}`, { method: "DELETE" }),
+    discover: () =>
+      request<{ topicCount: number; subtopicCount: number }>("/dna/discover", { method: "POST" }),
+    updateTopicStatus: (id: string, status: "active" | "rejected") =>
+      request<{ topic: DnaTopic }>(`/dna/topics/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    updateSubtopicStatus: (id: string, status: "active" | "rejected") =>
+      request<{ subtopic: DnaSubtopic }>(`/dna/subtopics/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
   },
   patterns: {
     list: () =>
@@ -503,7 +555,7 @@ export const api = {
   },
   org: {
     getConfig: () => request<OrgConfig>("/org/config"),
-    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string }) =>
+    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number }) =>
       request<OrgConfig>("/org/config", {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -517,6 +569,29 @@ export const api = {
   },
   metrics: {
     get: () => request<DashboardMetrics>("/metrics"),
+  },
+  flags: {
+    flag: (body: { messageId: string; chatId: string; reason?: string }) =>
+      request<{ flag: { id: string } }>("/flags", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    count: () =>
+      request<{ count: number }>("/flags/count"),
+    list: () =>
+      request<{ flags: FlaggedMessage[] }>("/flags"),
+    updateStatus: (id: string, status: "reviewed" | "dismissed") =>
+      request<{ flag: FlaggedMessage }>(`/flags/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+  },
+  learner: {
+    feed: () => request<LearnerFeed>("/microlearnings/feed"),
+  },
+  chat: {
+    loadMLSession: (microlearningId: string) =>
+      request<MLChatSession>(`/chat/ml/${microlearningId}`),
   },
   avatars: {
     list: () =>

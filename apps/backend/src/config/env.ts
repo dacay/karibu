@@ -40,7 +40,7 @@ const envSchema = z.object({
   // AI / LLM
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
-  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  DEEPGRAM_API_KEY: z.string().min(1).optional(),
 
   // AWS S3
   AWS_REGION: z.string().min(1).optional(),
@@ -55,6 +55,9 @@ const envSchema = z.object({
   // S3 — Assets (avatars, logos — CDN-fronted, public read)
   S3_ASSETS_BUCKET_NAME: z.string().min(1).optional(),
   S3_ASSETS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
+
+  // CloudFront — Distribution ID for CDN cache invalidation on asset updates
+  CLOUDFRONT_DISTRIBUTION_ID: z.string().min(1).optional(),
 
   // DNA Synthesis
   DNA_SYNTHESIS_MIN_VALUES: z.string().default('5').transform(Number),

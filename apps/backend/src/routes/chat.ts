@@ -13,8 +13,8 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { eq, and, inArray } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
-import { openai, elevenlabs } from '../ai/mastra.js';
-import { saveChat } from '../services/chat.js';
+import { openai, deepgram } from '../ai/mastra.js';
+import { saveChat, loadChat } from '../services/chat.js';
 import { queryDocuments } from '../services/chromadb.js';
 import { db } from '../db/index.js';
 import {
@@ -27,6 +27,7 @@ import {
   userGroupMembers,
   userGroups,
   microlearningSequenceAssignments,
+  chats,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -79,14 +80,13 @@ function buildMLSystemPrompt(
   } else {
     parts.push(
       '\nBEHAVIORAL GUIDELINES:',
-      '- The learner\'s first message will be "__start__" — this is a system trigger, not typed by the learner. Respond to it by opening the lesson: greet the learner by setting the context, then immediately teach the first objective.',
-      '- YOU are the teacher. Never ask the learner to explain topics to you. You provide the knowledge; the learner absorbs it.',
-      '- Teach one objective at a time in 2-4 sentences. Then ask the learner a comprehension question before moving on.',
+      '- The learner\'s first message will be "__start__" — this is a system trigger, not typed by the learner. Respond to it by opening the session.',
       '- This is a 5-minute interactive session. Keep messages short and the pace moving.',
+      '- Cover all learning objectives listed above during the session.',
       '- Use the organizational knowledge above as your primary source of truth.',
       '- Use the searchKnowledge tool when you need additional context from organizational documents.',
-      '- If the learner asks about unrelated topics, acknowledge briefly and redirect back to the lesson.',
-      '- Once ALL objectives have been covered and the learner demonstrates understanding, call markLearningComplete.',
+      '- If the learner asks about unrelated topics, acknowledge briefly and redirect back to the session.',
+      '- Once ALL objectives have been covered and the learner demonstrates understanding, deliver your closing remarks AND call markLearningComplete in that same response. Never say a closing message and then wait for the learner to reply before calling the tool.',
     );
   }
 
@@ -101,6 +101,38 @@ Guidelines:
 - Guide the learner through all objectives in a natural back-and-forth flow.
 - Give encouraging, specific feedback on their answers, then continue to the next concept.
 - The entire session should feel complete within roughly 5 minutes of interaction.`;
+
+// ─── GET /chat/ml/:microlearningId ─────────────────────────────────────────────
+
+/**
+ * GET /chat/ml/:microlearningId
+ * Load the existing chat (id + messages) for the current user and a given ML.
+ * Returns null chatId and empty messages if no prior conversation exists.
+ */
+chat.get('/ml/:microlearningId', async (c) => {
+
+  const auth = c.get('auth');
+  const microlearningId = c.req.param('microlearningId');
+
+  const [existing] = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(and(
+      eq(chats.userId, auth.userId),
+      eq(chats.microlearningId, microlearningId),
+      eq(chats.type, 'microlearning'),
+    ))
+    .orderBy(chats.updatedAt)
+    .limit(1);
+
+  if (!existing) {
+    return c.json({ chatId: null, messages: [] });
+  }
+
+  const messages = await loadChat(existing.id);
+
+  return c.json({ chatId: existing.id, messages });
+});
 
 // ─── POST /chat/ml ─────────────────────────────────────────────────────────────
 
@@ -359,7 +391,19 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
 // ─── POST /chat/assistant ──────────────────────────────────────────────────────
 
-const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — use it when answering questions that may relate to the organization's documented knowledge.`;
+const ASSISTANT_SYSTEM_PROMPT = `You are a helpful assistant. Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — always call it before answering.
+
+The tool returns results in labeled sections:
+- [Source Knowledge] — curated, verified organizational knowledge. Prioritize this.
+- [Document Knowledge] — relevant excerpts from uploaded documents. Use when source knowledge is insufficient.
+- If neither section appears, no organizational knowledge was found.
+
+IMPORTANT: Never include the section labels [Source Knowledge] or [Document Knowledge] in your response text. They are internal markers only.
+
+You MUST call reportSource before writing your response. Choose:
+- "source" if your answer will rely on [Source Knowledge]
+- "document" if your answer will rely on [Document Knowledge]
+- "general" if the search results were irrelevant and you will answer from general knowledge`;
 
 const assistantChatSchema = z.object({
   chatId: z.string().min(1),
@@ -373,7 +417,8 @@ const assistantChatSchema = z.object({
 /**
  * POST /chat/assistant
  * Streaming chat endpoint for free-form assistant conversations.
- * Includes vector search tool for accessing organizational knowledge.
+ * Search order: approved source values → vector DB → general knowledge (LLM).
+ * Tracks the data source and surfaces it via message metadata.
  */
 chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
 
@@ -381,27 +426,78 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   const messages = c.req.valid('json').messages as UIMessage[];
   const auth = c.get('auth');
 
+  // Track the best knowledge source used during this response:
+  // null = tool not called, 'source' = approved values, 'document' = vector DB, 'general' = LLM only
+  let dataSource: 'source' | 'document' | 'general' | null = null;
+  let searchWasCalled = false;
+
   const result = streamText({
     model: openai('gpt-4o'),
     system: ASSISTANT_SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    stopWhen: stepCountIs(2),
+    stopWhen: stepCountIs(3),
     tools: {
       searchKnowledge: {
-        description: 'Search the organizational knowledge base for information relevant to the user\'s question.',
+        description: 'Search the organizational knowledge base for information relevant to the user\'s question. Always call this before answering.',
         inputSchema: z.object({
           query: z.string().describe('Search query to find relevant organizational knowledge'),
         }),
         execute: async ({ query }) => {
+          searchWasCalled = true;
+          const sections: string[] = [];
+
+          // Phase 1: Fetch approved source values for the organization
+          try {
+            const approvedValues = await db
+              .select({
+                content: dnaValues.content,
+                topicName: dnaTopics.name,
+                subtopicName: dnaSubtopics.name,
+              })
+              .from(dnaValues)
+              .innerJoin(dnaSubtopics, eq(dnaValues.subtopicId, dnaSubtopics.id))
+              .innerJoin(dnaTopics, eq(dnaSubtopics.topicId, dnaTopics.id))
+              .where(and(
+                eq(dnaTopics.organizationId, auth.organizationId),
+                eq(dnaValues.approval, 'approved'),
+              ));
+
+            if (approvedValues.length > 0) {
+              const lines = approvedValues.map((v) => `- [${v.topicName} > ${v.subtopicName}] ${v.content}`);
+              sections.push(`[Source Knowledge]\n${lines.join('\n')}`);
+            }
+          } catch (err) {
+            logger.warn({ err }, 'Source values query failed during assistant chat.');
+          }
+
+          // Phase 2: Search vector DB for document chunks
           try {
             const results = await queryDocuments(query, auth.organizationId, 5);
             const docs = results.documents.filter(Boolean) as string[];
-            if (docs.length === 0) return 'No relevant organizational knowledge found.';
-            return docs.join('\n\n');
+            if (docs.length > 0) {
+              sections.push(`[Document Knowledge]\n${docs.join('\n\n')}`);
+            }
           } catch (err) {
             logger.warn({ err }, 'Vector search failed during assistant chat.');
-            return 'Knowledge search unavailable.';
           }
+
+          if (sections.length === 0) {
+            return 'No organizational knowledge found for this query.';
+          }
+
+          return sections.join('\n\n---\n\n');
+        },
+      },
+      reportSource: {
+        description: 'Report which knowledge source your answer actually used. Call this after writing your response.',
+        inputSchema: z.object({
+          source: z.enum(['source', 'document', 'general']).describe(
+            '"source" if answer used Source Knowledge, "document" if answer used Document Knowledge, "general" if search results were irrelevant and you used your own knowledge',
+          ),
+        }),
+        execute: async ({ source }: { source: 'source' | 'document' | 'general' }) => {
+          dataSource = source;
+          return 'Recorded.';
         },
       },
     },
@@ -410,6 +506,11 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
+    messageMetadata: ({ part }) => {
+      if (part.type === 'finish' && (dataSource ?? (searchWasCalled ? 'general' : null))) {
+        return { dataSource: dataSource ?? 'general' };
+      }
+    },
     onFinish: ({ messages: updatedMessages }) => {
       saveChat({
         chatId,
@@ -431,15 +532,16 @@ const ttsSchema = z.object({
   voiceId: z.string().min(1).optional(),
 });
 
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; // ElevenLabs "Rachel"
+const DEFAULT_VOICE_ID = process.env.DEFAULT_VOICE_ID ?? 'aura-2-asteria-en'; // Deepgram "Asteria"
 
 /**
  * POST /chat/tts
- * Convert text to speech using ElevenLabs and stream back MP3 audio.
+ * Convert text to speech using Deepgram and stream back MP3 audio.
+ * For Deepgram, the voiceId is the model name (e.g. "aura-2-asteria-en").
  */
 chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
 
-  if (!env.ELEVENLABS_API_KEY) {
+  if (!env.DEEPGRAM_API_KEY) {
     return c.json({ error: 'TTS is not configured on this server.' }, 400);
   }
 
@@ -448,9 +550,8 @@ chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
   try {
 
     const result = await generateSpeech({
-      model: elevenlabs.speech('eleven_multilingual_v2'),
+      model: deepgram.speech(voiceId),
       text,
-      voice: voiceId,
     });
 
     return new Response(result.audio.uint8Array.buffer as ArrayBuffer, {
@@ -472,12 +573,12 @@ chat.post('/tts', zValidator('json', ttsSchema), async (c) => {
 
 /**
  * POST /chat/transcribe
- * Transcribe an audio file to text using ElevenLabs scribe_v1.
+ * Transcribe an audio file to text using Deepgram nova-3.
  * Accepts multipart/form-data with an `audio` field.
  */
 chat.post('/transcribe', async (c) => {
 
-  if (!env.ELEVENLABS_API_KEY) {
+  if (!env.DEEPGRAM_API_KEY) {
     return c.json({ error: 'Transcription is not configured on this server.' }, 400);
   }
 
@@ -491,16 +592,20 @@ chat.post('/transcribe', async (c) => {
     }
 
     const result = await transcribe({
-      model: elevenlabs.transcription('scribe_v1'),
+      model: deepgram.transcription('nova-3'),
       audio: new Uint8Array(await file.arrayBuffer()),
-      providerOptions: {
-        elevenlabs: { languageCode: 'en' },
-      },
     });
 
     return c.json({ text: result.text });
 
   } catch (error) {
+
+    if (error instanceof Error && error.name === 'AI_NoTranscriptGeneratedError') {
+
+      logger.debug('Transcription returned empty — silence or no speech detected.');
+      
+      return c.json({ text: '' });
+    }
 
     logger.error({ error }, 'Transcription failed.');
 

@@ -3,14 +3,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Spinner } from "@/components/ui/spinner";
-import { ChatInterface } from "@/features/chat";
-import { CHAT_ENDPOINTS } from "@/features/chat";
-import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { AccountMenu } from "@/components/AccountMenu";
+import { ChatInterface, CHAT_ENDPOINTS } from "@/features/chat";
 import type { ChatAvatar } from "@/features/chat";
-
-const ASSETS_CDN_BASE = process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? "https://cdn.karibu.ai";
+import { api } from "@/lib/api";
+import { getAssetUrl } from "@/lib/assets";
 
 export default function ChatPage() {
 
@@ -24,21 +25,18 @@ export default function ChatPage() {
     }
   }, [user, isLoading, router]);
 
-  // Load user profile to get avatar preference
   const { data: profileData } = useQuery({
     queryKey: ["user", "me"],
     queryFn: api.user.me,
     enabled: !!user,
   });
 
-  // Load available avatars
   const { data: avatarsData } = useQuery({
     queryKey: ["avatars"],
     queryFn: api.avatars.list,
     enabled: !!user,
   });
 
-  // Resolve avatar: use the user's preferred avatar if set
   const avatar = useMemo((): ChatAvatar | undefined => {
     const preferredAvatarId = profileData?.user.preferredAvatarId;
     if (!preferredAvatarId || !avatarsData?.avatars) return undefined;
@@ -49,7 +47,7 @@ export default function ChatPage() {
     return {
       name: found.name,
       voiceId: found.voiceId,
-      image: found.imageS3Key ? `${ASSETS_CDN_BASE}/${found.imageS3Key}` : undefined,
+      image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
     };
   }, [profileData, avatarsData]);
 
@@ -64,13 +62,31 @@ export default function ChatPage() {
   if (!user) return null;
 
   return (
-    <div className="h-screen">
-      <ChatInterface
-        endpoint={CHAT_ENDPOINTS.assistant}
-        chatId={chatId}
-        avatar={avatar}
-        autoPlayVoice={false}
-      />
+    <div className="flex h-screen flex-col">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            aria-label="Go back"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <span className="text-sm font-medium">Ask me anything</span>
+        </div>
+        <AccountMenu />
+      </header>
+
+      <div className="flex-1 overflow-hidden">
+        <ChatInterface
+          endpoint={CHAT_ENDPOINTS.assistant}
+          chatId={chatId}
+          avatar={avatar}
+          autoPlayVoice={false}
+          className="h-full"
+        />
+      </div>
     </div>
   );
 }

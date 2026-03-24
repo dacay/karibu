@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
-import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, type LogoVariant } from '../services/s3.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, invalidateCloudFrontPaths, type LogoVariant } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const org = new Hono();
@@ -28,6 +28,7 @@ const updateConfigSchema = z.object({
   pronunciation: z.string().max(200).optional().nullable(),
   learnerTerm: z.string().min(1).max(50).optional(),
   learnerTermPlural: z.string().min(1).max(50).optional(),
+  expirationIntervalHours: z.number().int().min(1).max(720).optional(),
 });
 
 /**
@@ -47,6 +48,7 @@ org.get('/config', async (c) => {
         pronunciation: organizations.pronunciation,
         learnerTerm: organizations.learnerTerm,
         learnerTermPlural: organizations.learnerTermPlural,
+        expirationIntervalHours: organizations.expirationIntervalHours,
       })
       .from(organizations)
       .where(eq(organizations.id, organization.id))
@@ -77,7 +79,7 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
     const organization = c.get('organization');
     const body = c.req.valid('json');
 
-    const updates: Record<string, string | null> = {};
+    const updates: Record<string, string | number | null> = {};
 
     if (body.name !== undefined) {
       updates.name = body.name;
@@ -95,6 +97,10 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
       updates.learnerTermPlural = body.learnerTermPlural;
     }
 
+    if (body.expirationIntervalHours !== undefined) {
+      updates.expirationIntervalHours = body.expirationIntervalHours;
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: 'No fields to update.' }, 400);
     }
@@ -109,6 +115,7 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
         pronunciation: organizations.pronunciation,
         learnerTerm: organizations.learnerTerm,
         learnerTermPlural: organizations.learnerTermPlural,
+        expirationIntervalHours: organizations.expirationIntervalHours,
       });
 
     logger.info({ organizationId: organization.id }, 'Org config updated.');
@@ -172,6 +179,8 @@ org.post('/logo', async (c) => {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await uploadToAssetsBucket(s3Key, buffer, file.type, { cacheControl: 'no-cache' });
+
+    await invalidateCloudFrontPaths([s3Key]);
 
     logger.info({ organizationId: organization.id, variant, s3Key }, 'Org logo uploaded.');
 

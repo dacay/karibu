@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, pgEnum, jsonb, integer, index, boolean, unique } from 'drizzle-orm/pg-core';
 
 // Role enum
 export const roleEnum = pgEnum('role', ['admin', 'user']);
@@ -20,13 +20,14 @@ export const organizations = pgTable('organizations', {
   pronunciation: text('pronunciation'),
   learnerTerm: text('learner_term').notNull().default('user'),
   learnerTermPlural: text('learner_term_plural').notNull().default('users'),
+  expirationIntervalHours: integer('expiration_interval_hours').notNull().default(8),
   ...timestamps,
 });
 
 // Users table
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
-  email: text('email').notNull().unique(),
+  email: text('email').notNull(),
   password: text('password').notNull(), // bcrypt hashed
   phoneNumber: text('phone_number'), // E.164 format (e.g., +14155552671)
   role: roleEnum('role').notNull().default('user'),
@@ -34,7 +35,9 @@ export const users = pgTable('users', {
   // User's preferred avatar — stored as plain uuid (no FK) to avoid circular reference with avatars table
   preferredAvatarId: uuid('preferred_avatar_id'),
   ...timestamps,
-});
+}, (table) => [
+  unique('users_email_org_unique').on(table.email, table.organizationId),
+]);
 
 // Auth sessions table - tracks active JWT tokens for revocation
 export const authSessions = pgTable('auth_sessions', {
@@ -235,6 +238,24 @@ export const avatars = pgTable('avatars', {
   ...timestamps,
 }, (table) => [
   index('avatars_organization_id_idx').on(table.organizationId),
+]);
+
+// Flagged messages status enum
+export const flaggedMessageStatusEnum = pgEnum('flagged_message_status', ['open', 'reviewed', 'dismissed']);
+
+// Flagged messages table - messages flagged by users as potentially incorrect
+export const flaggedMessages = pgTable('flagged_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  messageId: text('message_id').notNull().references(() => chatMessages.id, { onDelete: 'cascade' }),
+  chatId: text('chat_id').notNull().references(() => chats.id, { onDelete: 'cascade' }),
+  flaggedBy: uuid('flagged_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  reason: text('reason'),
+  status: flaggedMessageStatusEnum('status').notNull().default('open'),
+  ...timestamps,
+}, (table) => [
+  index('flagged_messages_organization_id_idx').on(table.organizationId),
+  index('flagged_messages_status_idx').on(table.status),
 ]);
 
 // Document status enum

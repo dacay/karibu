@@ -2,18 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, CheckCircle, AlertCircle, Building2 } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff } from "lucide-react";
 import Image from "next/image";
 import { api, type OrgConfig } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { useBumpLogoVersion } from "@/hooks/useLogoVersion";
+import { getLogoUrl } from "@/lib/assets";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-const ASSETS_CDN_BASE = process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? "https://cdn.karibu.ai";
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -29,11 +29,10 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [cacheBust, setCacheBust] = useState<number | null>(null);
+  const [imgError, setImgError] = useState(false);
   const bumpLogoVersion = useBumpLogoVersion();
 
-  const cdnPath = subdomain
-    ? `${ASSETS_CDN_BASE}/${subdomain}/logo-${variant}.png`
-    : null;
+  const cdnPath = subdomain ? getLogoUrl(subdomain, variant) : null;
 
   const previewSrc = cdnPath
     ? cacheBust
@@ -51,6 +50,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
 
     try {
       await api.org.uploadLogo(variant, file);
+      setImgError(false);
       setCacheBust(Date.now());
       bumpLogoVersion();
       setStatus("done");
@@ -87,8 +87,8 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
       >
-        {previewSrc && (
-          <div className={`mb-1 rounded p-2 ${variant === "dark" ? "bg-gray-900" : "bg-gray-50"}`}>
+        <div className={`mb-1 rounded p-2 ${variant === "dark" ? "bg-gray-900" : "bg-gray-50"}`}>
+          {previewSrc && !imgError ? (
             <Image
               src={previewSrc}
               alt={`${label} preview`}
@@ -96,9 +96,14 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
               height={40}
               className="object-contain"
               unoptimized
+              onError={() => setImgError(true)}
             />
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center justify-center w-[120px] h-[40px]">
+              <ImageOff className={`size-5 ${variant === "dark" ? "text-gray-600" : "text-gray-300"}`} />
+            </div>
+          )}
+        </div>
 
         {status === "uploading" ? (
           <Spinner className="size-5 text-muted-foreground" />
@@ -144,7 +149,9 @@ export function OrganizationSection() {
   const [pronunciation, setPronunciation] = useState("");
   const [learnerTerm, setLearnerTerm] = useState("user");
   const [learnerTermPlural, setLearnerTermPlural] = useState("users");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [expirationIntervalHours, setExpirationIntervalHours] = useState(8);
+  const [identitySaveStatus, setIdentitySaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [sessionSaveStatus, setSessionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     if (config) {
@@ -152,26 +159,42 @@ export function OrganizationSection() {
       setPronunciation(config.pronunciation ?? "");
       setLearnerTerm(config.learnerTerm);
       setLearnerTermPlural(config.learnerTermPlural);
+      setExpirationIntervalHours(config.expirationIntervalHours);
     }
   }, [config]);
 
-  const updateMutation = useMutation({
-    mutationFn: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string }) =>
+  const identityMutation = useMutation({
+    mutationFn: (body: { name: string; pronunciation: string | null; learnerTerm: string; learnerTermPlural: string }) =>
       api.org.updateConfig(body),
-    onMutate: () => setSaveStatus("saving"),
+    onMutate: () => setIdentitySaveStatus("saving"),
     onSuccess: (updated) => {
       queryClient.setQueryData(["org", "config"], updated);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      setIdentitySaveStatus("saved");
+      setTimeout(() => setIdentitySaveStatus("idle"), 2000);
     },
     onError: () => {
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus("idle"), 3000);
+      setIdentitySaveStatus("error");
+      setTimeout(() => setIdentitySaveStatus("idle"), 3000);
     },
   });
 
-  function handleSave() {
-    updateMutation.mutate({
+  const sessionMutation = useMutation({
+    mutationFn: (body: { expirationIntervalHours: number }) =>
+      api.org.updateConfig(body),
+    onMutate: () => setSessionSaveStatus("saving"),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["org", "config"], updated);
+      setSessionSaveStatus("saved");
+      setTimeout(() => setSessionSaveStatus("idle"), 2000);
+    },
+    onError: () => {
+      setSessionSaveStatus("error");
+      setTimeout(() => setSessionSaveStatus("idle"), 3000);
+    },
+  });
+
+  function handleIdentitySave() {
+    identityMutation.mutate({
       name: name.trim(),
       pronunciation: pronunciation.trim() || null,
       learnerTerm: learnerTerm.trim() || "user",
@@ -179,11 +202,18 @@ export function OrganizationSection() {
     });
   }
 
-  const isDirty =
+  function handleSessionSave() {
+    sessionMutation.mutate({ expirationIntervalHours });
+  }
+
+  const isIdentityDirty =
     name !== (config?.name ?? "") ||
     pronunciation !== (config?.pronunciation ?? "") ||
     learnerTerm !== (config?.learnerTerm ?? "user") ||
     learnerTermPlural !== (config?.learnerTermPlural ?? "users");
+
+  const isSessionDirty =
+    expirationIntervalHours !== (config?.expirationIntervalHours ?? 8);
 
   return (
     <div className="space-y-6">
@@ -268,21 +298,21 @@ export function OrganizationSection() {
 
               <div className="flex items-center gap-3 pt-1">
                 <Button
-                  onClick={handleSave}
-                  disabled={!isDirty || saveStatus === "saving"}
+                  onClick={handleIdentitySave}
+                  disabled={!isIdentityDirty || identitySaveStatus === "saving"}
                   size="sm"
                 >
-                  {saveStatus === "saving" && <Spinner className="mr-1.5" />}
-                  {saveStatus === "saving" ? "Saving..." : "Save changes"}
+                  {identitySaveStatus === "saving" && <Spinner className="mr-1.5" />}
+                  {identitySaveStatus === "saving" ? "Saving..." : "Save changes"}
                 </Button>
 
-                {saveStatus === "saved" && (
+                {identitySaveStatus === "saved" && (
                   <span className="flex items-center gap-1 text-sm text-green-600">
                     <CheckCircle className="size-3.5" />
                     Saved.
                   </span>
                 )}
-                {saveStatus === "error" && (
+                {identitySaveStatus === "error" && (
                   <span className="flex items-center gap-1 text-sm text-destructive">
                     <AlertCircle className="size-3.5" />
                     Failed to save.
@@ -307,6 +337,65 @@ export function OrganizationSection() {
             <CardContent className="space-y-4">
               <LogoUpload variant="light" subdomain={subdomain} />
               <LogoUpload variant="dark" subdomain={subdomain} />
+            </CardContent>
+          </Card>
+
+          {/* Session settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Timer className="size-4" />
+                Session settings
+              </CardTitle>
+              <CardDescription>
+                Control how long learners have to complete a microlearning before it expires.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="expiration-interval">Expiration window (hours)</Label>
+                <Input
+                  id="expiration-interval"
+                  type="number"
+                  min={1}
+                  max={720}
+                  value={expirationIntervalHours}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 720) {
+                      setExpirationIntervalHours(val);
+                    }
+                  }}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground">
+                  An active microlearning expires if not completed within this many hours of being opened (1–720).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  onClick={handleSessionSave}
+                  disabled={!isSessionDirty || sessionSaveStatus === "saving"}
+                  size="sm"
+                >
+                  {sessionSaveStatus === "saving" && <Spinner className="mr-1.5" />}
+                  {sessionSaveStatus === "saving" ? "Saving..." : "Save changes"}
+                </Button>
+
+                {sessionSaveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-sm text-green-600">
+                    <CheckCircle className="size-3.5" />
+                    Saved.
+                  </span>
+                )}
+                {sessionSaveStatus === "error" && (
+                  <span className="flex items-center gap-1 text-sm text-destructive">
+                    <AlertCircle className="size-3.5" />
+                    Failed to save.
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

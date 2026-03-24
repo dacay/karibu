@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const { lightSrc, darkSrc, isLoading, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading } = useLogo();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +39,7 @@ export default function LoginPage() {
         <CardContent className="px-8 pt-8 pb-8">
           <div className="mb-6 flex justify-center min-h-[40px] items-center">
             {isLoading ? (
-              <Spinner />
+              <div className="w-[120px] h-[40px]" />
             ) : (
               <>
                 <Image
@@ -48,7 +48,6 @@ export default function LoginPage() {
                   width={120}
                   height={40}
                   className="block dark:hidden"
-                  onError={onLightError}
                   unoptimized
                   priority
                 />
@@ -58,7 +57,6 @@ export default function LoginPage() {
                   width={120}
                   height={40}
                   className="hidden dark:block"
-                  onError={onDarkError}
                   unoptimized
                   priority
                 />

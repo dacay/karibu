@@ -16,10 +16,23 @@ const CHUNK_OVERLAP = 100; // 20% overlap to preserve cross-boundary context
 export const extractText = async (buffer: Buffer, mimeType: string): Promise<string> => {
   switch (mimeType) {
     case 'application/pdf': {
-      const { PDFParse } = await import('pdf-parse');
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      return result.text;
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      pdfjs.GlobalWorkerOptions.workerSrc = import.meta.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+      const loadingTask = pdfjs.getDocument({
+        data: new Uint8Array(buffer),
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        disableAutoFetch: true,
+        disableStream: true,
+      });
+      const pdf = await loadingTask.promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        pages.push(content.items.map((item: any) => ('str' in item ? item.str : '')).join(' '));
+      }
+      return pages.join('\n');
     }
     case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
     case 'application/msword': {

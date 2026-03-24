@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
-  Dna,
+  Layers,
   BookOpen,
   UserCircle,
   MessageSquare,
@@ -13,11 +13,14 @@ import {
   Sun,
   Moon,
   Monitor,
+  Flag,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useQuery } from "@tanstack/react-query";
 
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
 import { useLogo } from "@/hooks/useLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
@@ -39,6 +42,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import { KaribuFooter } from "@/components/KaribuFooter";
 import { DashboardSection } from "./sections/Dashboard";
 import { DNASection } from "./sections/DNA";
 import { MicrolearningsSection } from "./sections/Microlearnings";
@@ -46,28 +50,20 @@ import { AvatarsSection } from "./sections/Avatars";
 import { PatternsSection } from "./sections/Patterns";
 import { TeamSection } from "./sections/Team";
 import { OrganizationSection } from "./sections/Organization";
+import { FlaggedMessagesSection } from "./sections/FlaggedMessages";
 
-type SectionId = "dashboard" | "dna" | "microlearnings" | "avatars" | "patterns" | "team" | "organization";
+type SectionId = "dashboard" | "source" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { id: "dna", label: "Source", icon: Dna },
+  { id: "source", label: "Source", icon: Layers },
   { id: "microlearnings", label: "Microlearnings", icon: BookOpen },
   { id: "avatars", label: "Avatars", icon: UserCircle },
   { id: "patterns", label: "Patterns", icon: MessageSquare },
   { id: "team", label: "Team", icon: Users },
   { id: "organization", label: "Organization", icon: Building2 },
+  { id: "flagged", label: "Flagged", icon: Flag },
 ];
-
-const SECTION_MAP: Record<SectionId, React.ReactNode> = {
-  dashboard: <DashboardSection />,
-  dna: <DNASection />,
-  microlearnings: <MicrolearningsSection />,
-  avatars: <AvatarsSection />,
-  patterns: <PatternsSection />,
-  team: <TeamSection />,
-  organization: <OrganizationSection />,
-};
 
 function getInitials(email: string): string {
   const [local] = email.split("@");
@@ -87,11 +83,19 @@ const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementTyp
 export function AdminRoot() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { lightSrc, darkSrc, isLoading, onLightError, onDarkError } = useLogo();
+  const { lightSrc, darkSrc, isLoading } = useLogo();
   const pathname = usePathname();
   const router = useRouter();
 
   const activeSection: SectionId = NAV_ITEMS.find((item) => item.id !== "dashboard" && `/${item.id}` === pathname)?.id ?? "dashboard";
+
+  const { data: flagCount } = useQuery({
+    queryKey: ["flags", "count"],
+    queryFn: api.flags.count,
+    refetchInterval: 60_000,
+  });
+
+  const openFlagCount = flagCount?.count ?? 0;
 
   const initials = user?.email ? getInitials(user.email) : "?";
 
@@ -101,29 +105,25 @@ export function AdminRoot() {
       <aside className="flex w-56 shrink-0 flex-col border-r bg-sidebar">
         <div className="flex h-[4.5rem] items-center justify-center px-5 border-b border-sidebar-border">
           {isLoading ? (
-            <Spinner />
+            <div className="w-32 h-10" />
           ) : (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div>
+                  <div className="relative w-32 h-10">
                     <Image
                       src={lightSrc}
                       alt="Logo"
-                      width={96}
-                      height={32}
-                      className="block dark:hidden"
-                      onError={onLightError}
+                      fill
+                      className="block dark:hidden object-contain"
                       unoptimized
                       priority
                     />
                     <Image
                       src={darkSrc}
                       alt="Logo"
-                      width={96}
-                      height={32}
-                      className="hidden dark:block"
-                      onError={onDarkError}
+                      fill
+                      className="hidden dark:block object-contain"
                       unoptimized
                       priority
                     />
@@ -140,6 +140,7 @@ export function AdminRoot() {
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
             const isActive = activeSection === id;
+            const showFlagBadge = id === "flagged" && openFlagCount > 0;
             return (
               <button
                 key={id}
@@ -151,13 +152,19 @@ export function AdminRoot() {
                     : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 ].join(" ")}
               >
-                <Icon className="size-4 shrink-0" />
-                {label}
+                <Icon className={["size-4 shrink-0", showFlagBadge ? "text-destructive" : ""].join(" ")} />
+                <span className="flex-1 text-left">{label}</span>
+                {showFlagBadge && (
+                  <span className="rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-destructive-foreground">
+                    {openFlagCount}
+                  </span>
+                )}
               </button>
             );
           })}
         </nav>
 
+        <KaribuFooter />
       </aside>
 
       {/* Main content */}
@@ -205,7 +212,18 @@ export function AdminRoot() {
 
         {/* Page area */}
         <main className="flex-1 overflow-auto p-6">
-          {SECTION_MAP[activeSection]}
+          {activeSection === "dashboard" && (
+            <DashboardSection
+              onNavigateToFlags={() => router.push("/flagged")}
+            />
+          )}
+          {activeSection === "source" && <DNASection />}
+          {activeSection === "microlearnings" && <MicrolearningsSection />}
+          {activeSection === "avatars" && <AvatarsSection />}
+          {activeSection === "patterns" && <PatternsSection />}
+          {activeSection === "team" && <TeamSection />}
+          {activeSection === "organization" && <OrganizationSection />}
+          {activeSection === "flagged" && <FlaggedMessagesSection />}
         </main>
       </div>
     </div>

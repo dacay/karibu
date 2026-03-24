@@ -18,6 +18,7 @@ import {
   Hash,
   MessageSquare,
   UserRound,
+  FlaskConical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -169,11 +171,9 @@ function AssignPopover({ seqId }: { seqId: string }) {
                   {isMutating ? (
                     <Spinner className="size-3.5 shrink-0" />
                   ) : (
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
-                      onChange={() => handleToggle(group.id)}
-                      className="rounded border-input"
+                      onCheckedChange={() => handleToggle(group.id)}
                     />
                   )}
                   <span className="text-sm flex-1 truncate">{group.name}</span>
@@ -266,7 +266,7 @@ function MlForm({
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Topic <span className="text-destructive">*</span></label>
           <NativeSelect value={topicId} onChange={handleTopicChange} placeholder="Select topic">
-            {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -281,7 +281,7 @@ function MlForm({
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Subtopics</label>
           <div className="flex flex-wrap gap-2 p-3 border rounded-md bg-background">
-            {selectedTopic.subtopics.filter((s) => s.values.some((v) => v.approval === "approved")).map((s) => (
+            {[...selectedTopic.subtopics].filter((s) => s.values.some((v) => v.approval === "approved")).sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
               <label key={s.id} className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -529,6 +529,13 @@ function MlRow({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem asChild>
+            <a href={`/ml/${ml.id}`} target="_blank" rel="noopener noreferrer">
+              <FlaskConical className="size-3.5 mr-2" />
+              Test
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={onToggleStatus}>
             {ml.status === "draft"
               ? <><Globe className="size-3.5 mr-2" /> Publish</>
