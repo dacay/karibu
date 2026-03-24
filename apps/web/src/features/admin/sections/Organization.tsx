@@ -440,7 +440,7 @@ export function OrganizationSection() {
                 Default assistant
               </CardTitle>
               <CardDescription>
-                The default avatar used in conversations. Learners can override this with their own preference.
+                The default avatar used in the assistant chat. Learners can override this with their own preference.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -458,7 +458,7 @@ export function OrganizationSection() {
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  This avatar will be used as the default for learners who have not chosen their own assistant.
+                  Applies only to the assistant chat. Learners who have not chosen their own avatar will see this one.
                 </p>
               </div>
 

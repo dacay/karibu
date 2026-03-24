@@ -168,17 +168,11 @@ export default function MicrolearningChatPage() {
       return buildChatAvatar(ml.avatar);
     }
 
-    // Learner: check for preferred avatar, then org default, then ML avatar
+    // Learner: preferred avatar overrides, otherwise use the ML's own avatar
     const preferredAvatarId = profileData?.user.preferredAvatarId;
     if (preferredAvatarId && avatarsData?.avatars) {
       const preferredAvatar = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
       if (preferredAvatar) return buildChatAvatar(preferredAvatar);
-    }
-
-    const defaultAvatarId = profileData?.user.defaultAvatarId;
-    if (defaultAvatarId && avatarsData?.avatars) {
-      const defaultAvatar = avatarsData.avatars.find((a) => a.id === defaultAvatarId);
-      if (defaultAvatar) return buildChatAvatar(defaultAvatar);
     }
 
     return buildChatAvatar(ml.avatar);
