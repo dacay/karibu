@@ -38,17 +38,33 @@ export default function ChatPage() {
   });
 
   const avatar = useMemo((): ChatAvatar | undefined => {
+    if (!avatarsData?.avatars) return undefined;
+
     const preferredAvatarId = profileData?.user.preferredAvatarId;
-    if (!preferredAvatarId || !avatarsData?.avatars) return undefined;
+    if (preferredAvatarId) {
+      const found = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
+      if (found) {
+        return {
+          name: found.name,
+          voiceId: found.voiceId,
+          image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
+        };
+      }
+    }
 
-    const found = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
-    if (!found) return undefined;
+    const defaultAvatarId = profileData?.user.defaultAvatarId;
+    if (defaultAvatarId) {
+      const found = avatarsData.avatars.find((a) => a.id === defaultAvatarId);
+      if (found) {
+        return {
+          name: found.name,
+          voiceId: found.voiceId,
+          image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
+        };
+      }
+    }
 
-    return {
-      name: found.name,
-      voiceId: found.voiceId,
-      image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
-    };
+    return undefined;
   }, [profileData, avatarsData]);
 
   if (isLoading) {
