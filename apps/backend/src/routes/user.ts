@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { authMiddleware } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { users, avatars } from '../db/schema.js';
+import { users, avatars, organizations } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 
 const userRouter = new Hono();
@@ -19,23 +19,25 @@ userRouter.get('/me', async (c) => {
 
   const auth = c.get('auth');
 
-  const [user] = await db
+  const [row] = await db
     .select({
       id: users.id,
       email: users.email,
       role: users.role,
       organizationId: users.organizationId,
       preferredAvatarId: users.preferredAvatarId,
+      defaultAvatarId: organizations.defaultAvatarId,
     })
     .from(users)
+    .innerJoin(organizations, eq(users.organizationId, organizations.id))
     .where(eq(users.id, auth.userId))
     .limit(1);
 
-  if (!user) {
+  if (!row) {
     return c.json({ error: 'User not found.' }, 404);
   }
 
-  return c.json({ user });
+  return c.json({ user: row });
 });
 
 const updatePreferencesSchema = z.object({
@@ -74,17 +76,25 @@ userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), as
     }
   }
 
-  const [updated] = await db
+  await db
     .update(users)
     .set({ preferredAvatarId: preferredAvatarId ?? null })
-    .where(eq(users.id, auth.userId))
-    .returning({
+    .where(eq(users.id, auth.userId));
+
+  // Re-query with org join so response includes defaultAvatarId
+  const [updated] = await db
+    .select({
       id: users.id,
       email: users.email,
       role: users.role,
       organizationId: users.organizationId,
       preferredAvatarId: users.preferredAvatarId,
-    });
+      defaultAvatarId: organizations.defaultAvatarId,
+    })
+    .from(users)
+    .innerJoin(organizations, eq(users.organizationId, organizations.id))
+    .where(eq(users.id, auth.userId))
+    .limit(1);
 
   logger.info({ userId: auth.userId, preferredAvatarId }, 'User avatar preference updated.');
 

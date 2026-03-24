@@ -222,6 +222,7 @@ export interface UserProfile {
   role: "admin" | "user";
   organizationId: string;
   preferredAvatarId: string | null;
+  defaultAvatarId: string | null;
 }
 
 export interface UserGroup {
@@ -276,6 +277,7 @@ export interface OrgConfig {
   learnerTerm: string;
   learnerTermPlural: string;
   expirationIntervalHours: number;
+  defaultAvatarId: string | null;
 }
 
 export interface FlaggedMessage {
@@ -555,7 +557,7 @@ export const api = {
   },
   org: {
     getConfig: () => request<OrgConfig>("/org/config"),
-    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number }) =>
+    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string | null }) =>
       request<OrgConfig>("/org/config", {
         method: "PATCH",
         body: JSON.stringify(body),
