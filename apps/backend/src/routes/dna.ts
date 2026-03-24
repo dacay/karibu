@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { eq, and, asc, ne } from 'drizzle-orm';
+import { eq, and, asc, ne, sql } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { dnaTopics, dnaSubtopics, dnaValues, documents } from '../db/schema.js';
+import { dnaTopics, dnaSubtopics, dnaValues, documents, microlearnings } from '../db/schema.js';
 import { queryDocuments, sampleDocumentChunks } from '../services/chromadb.js';
 import { openai } from '../ai/mastra.js';
 import { logger } from '../config/logger.js';
@@ -159,6 +159,47 @@ dnaRouter.delete('/topics/:id', requireRole('admin'), async (c) => {
     return c.json({ error: 'Topic not found.' }, 404);
   }
 
+  // Check if any microlearning references this topic directly
+  const linkedByTopic = await db
+    .select({ id: microlearnings.id, title: microlearnings.title })
+    .from(microlearnings)
+    .where(and(eq(microlearnings.topicId, id), eq(microlearnings.organizationId, auth.organizationId)))
+    .limit(5);
+
+  if (linkedByTopic.length > 0) {
+    const titles = linkedByTopic.map((m) => m.title).join(', ');
+    return c.json({
+      error: `This topic is used by microlearning(s): ${titles}. Remove the topic from those microlearnings before deleting.`,
+      code: 'TOPIC_IN_USE',
+    }, 409);
+  }
+
+  // Check if any subtopics of this topic are referenced by microlearnings
+  const subtopicIds = await db
+    .select({ id: dnaSubtopics.id })
+    .from(dnaSubtopics)
+    .where(eq(dnaSubtopics.topicId, id));
+
+  if (subtopicIds.length > 0) {
+    const ids = subtopicIds.map((s) => s.id);
+    const linkedBySubtopic = await db
+      .select({ id: microlearnings.id, title: microlearnings.title })
+      .from(microlearnings)
+      .where(and(
+        eq(microlearnings.organizationId, auth.organizationId),
+        sql`${microlearnings.subtopicIds}::jsonb ?| array[${sql.join(ids.map((i) => sql`${i}`), sql`, `)}]`,
+      ))
+      .limit(5);
+
+    if (linkedBySubtopic.length > 0) {
+      const titles = linkedBySubtopic.map((m) => m.title).join(', ');
+      return c.json({
+        error: `Subtopics of this topic are used by microlearning(s): ${titles}. Remove the subtopics from those microlearnings before deleting.`,
+        code: 'TOPIC_IN_USE',
+      }, 409);
+    }
+  }
+
   await db.delete(dnaTopics).where(eq(dnaTopics.id, id));
 
   logger.info({ topicId: id, organizationId: auth.organizationId }, 'DNA topic deleted.');
@@ -220,6 +261,24 @@ dnaRouter.delete('/subtopics/:id', requireRole('admin'), async (c) => {
 
   if (!subtopic) {
     return c.json({ error: 'Subtopic not found.' }, 404);
+  }
+
+  // Check if any microlearning references this subtopic (via topic or subtopicIds array)
+  const linkedMicrolearnings = await db
+    .select({ id: microlearnings.id, title: microlearnings.title })
+    .from(microlearnings)
+    .where(and(
+      eq(microlearnings.organizationId, auth.organizationId),
+      sql`${microlearnings.subtopicIds}::jsonb @> ${JSON.stringify([id])}::jsonb`,
+    ))
+    .limit(5);
+
+  if (linkedMicrolearnings.length > 0) {
+    const titles = linkedMicrolearnings.map((m) => m.title).join(', ');
+    return c.json({
+      error: `This subtopic is used by microlearning(s): ${titles}. Remove the subtopic from those microlearnings before deleting.`,
+      code: 'SUBTOPIC_IN_USE',
+    }, 409);
   }
 
   await db.delete(dnaSubtopics).where(eq(dnaSubtopics.id, id));
