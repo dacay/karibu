@@ -137,6 +137,30 @@ export const queryDocuments = async (
 }
 
 /**
+ * Sample document chunks for an organization without a specific query.
+ * Returns up to `limit` chunks, useful for broad content analysis like auto-discovery.
+ */
+export const sampleDocumentChunks = async (
+  organizationId: string,
+  limit = 40
+): Promise<{ ids: string[]; documents: (string | null)[] }> => {
+
+  const collection = await getDocumentCollection();
+
+  const results = await collection.get({
+    where: { organizationId },
+    limit,
+  });
+
+  logger.debug({ organizationId, count: results.ids.length }, 'Document chunks sampled from ChromaDB.');
+
+  return {
+    ids: results.ids,
+    documents: results.documents,
+  };
+}
+
+/**
  * Check connectivity to ChromaDB by listing collections.
  */
 export const checkChromaConnection = async (): Promise<boolean> => {

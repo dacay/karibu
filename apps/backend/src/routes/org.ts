@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq } from 'drizzle-orm';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { organizations } from '../db/schema.js';
+import { organizations, avatars } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
-import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, type LogoVariant } from '../services/s3.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, invalidateCloudFrontPaths, type LogoVariant } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const org = new Hono();
@@ -28,6 +28,8 @@ const updateConfigSchema = z.object({
   pronunciation: z.string().max(200).optional().nullable(),
   learnerTerm: z.string().min(1).max(50).optional(),
   learnerTermPlural: z.string().min(1).max(50).optional(),
+  expirationIntervalHours: z.number().int().min(1).max(720).optional(),
+  defaultAvatarId: z.string().uuid().nullable().optional(),
 });
 
 /**
@@ -47,6 +49,8 @@ org.get('/config', async (c) => {
         pronunciation: organizations.pronunciation,
         learnerTerm: organizations.learnerTerm,
         learnerTermPlural: organizations.learnerTermPlural,
+        expirationIntervalHours: organizations.expirationIntervalHours,
+        defaultAvatarId: organizations.defaultAvatarId,
       })
       .from(organizations)
       .where(eq(organizations.id, organization.id))
@@ -77,7 +81,7 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
     const organization = c.get('organization');
     const body = c.req.valid('json');
 
-    const updates: Record<string, string | null> = {};
+    const updates: Record<string, string | number | null> = {};
 
     if (body.name !== undefined) {
       updates.name = body.name;
@@ -95,6 +99,34 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
       updates.learnerTermPlural = body.learnerTermPlural;
     }
 
+    if (body.expirationIntervalHours !== undefined) {
+      updates.expirationIntervalHours = body.expirationIntervalHours;
+    }
+
+    if (body.defaultAvatarId !== undefined) {
+      if (body.defaultAvatarId) {
+        // Validate the avatar belongs to this org or is built-in
+        const [avatar] = await db
+          .select({ id: avatars.id })
+          .from(avatars)
+          .where(
+            and(
+              eq(avatars.id, body.defaultAvatarId),
+              or(
+                isNull(avatars.organizationId),
+                eq(avatars.organizationId, organization.id),
+              )
+            )
+          )
+          .limit(1);
+
+        if (!avatar) {
+          return c.json({ error: 'Avatar not found.' }, 404);
+        }
+      }
+      updates.defaultAvatarId = body.defaultAvatarId;
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: 'No fields to update.' }, 400);
     }
@@ -109,6 +141,8 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
         pronunciation: organizations.pronunciation,
         learnerTerm: organizations.learnerTerm,
         learnerTermPlural: organizations.learnerTermPlural,
+        expirationIntervalHours: organizations.expirationIntervalHours,
+        defaultAvatarId: organizations.defaultAvatarId,
       });
 
     logger.info({ organizationId: organization.id }, 'Org config updated.');
@@ -172,6 +206,8 @@ org.post('/logo', async (c) => {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     await uploadToAssetsBucket(s3Key, buffer, file.type, { cacheControl: 'no-cache' });
+
+    await invalidateCloudFrontPaths([s3Key]);
 
     logger.info({ organizationId: organization.id, variant, s3Key }, 'Org logo uploaded.');
 

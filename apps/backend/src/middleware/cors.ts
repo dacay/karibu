@@ -9,7 +9,7 @@ export const corsMiddleware = () => {
     origin: env.CORS_ORIGIN,
     // Allowed methods
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'User-Agent'],
     credentials: true,
   })
 }

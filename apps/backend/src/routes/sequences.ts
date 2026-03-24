@@ -9,6 +9,7 @@ import {
   userGroups,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
+import { broadcastFeedUpdate } from './learner-sse.js';
 
 const sequencesRouter = new Hono();
 
@@ -264,6 +265,9 @@ sequencesRouter.post('/:id/assignments', requireRole('admin'), async (c) => {
     .returning();
 
   logger.info({ sequenceId: id, groupId: body.groupId }, 'Sequence assignment created.');
+
+  // Notify learners in the newly assigned group that their feed may have new content
+  broadcastFeedUpdate(auth.organizationId);
 
   return c.json({ assignment }, 201);
 });

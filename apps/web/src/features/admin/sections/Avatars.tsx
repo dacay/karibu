@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UserCircle, Upload, X, Volume2, Square } from "lucide-react";
+import { Plus, Pencil, Trash2, UserCircle, Upload, X, Volume2 } from "lucide-react";
 import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
-import { api, type Avatar, ELEVENLABS_VOICES } from "@/lib/api";
+import { api, type Avatar, DEEPGRAM_VOICES } from "@/lib/api";
 import { useTTS } from "@/features/chat/hooks/useTTS";
+import { useAvatarImageVersion, useBumpAvatarImageVersion } from "@/hooks/useAvatarImageVersion";
+import { getAssetUrl } from "@/lib/assets";
 
-const ASSETS_CDN_BASE = process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? "https://cdn.karibu.ai";
-
-function getAvatarImageUrl(avatar: Avatar): string | null {
-  return avatar.imageS3Key ? `${ASSETS_CDN_BASE}/${avatar.imageS3Key}` : null;
+function getAvatarImageUrl(avatar: Avatar, version: number): string | null {
+  if (!avatar.imageS3Key) return null;
+  const base = getAssetUrl(avatar.imageS3Key);
+  return version ? `${base}?v=${version}` : base;
 }
 
 // ─── Voice selector ────────────────────────────────────────────────────────────
@@ -29,22 +31,27 @@ interface VoiceSelectorProps {
 }
 
 function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
-  const female = ELEVENLABS_VOICES.filter((v) => v.gender === "female");
-  const male = ELEVENLABS_VOICES.filter((v) => v.gender === "male");
+  const female = DEEPGRAM_VOICES.filter((v) => v.gender === "female");
+  const male = DEEPGRAM_VOICES.filter((v) => v.gender === "male");
   const { state, speak, stop } = useTTS();
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const previewingRef = useRef<string | null>(null);
 
-  function handlePreview(voiceId: string, voiceName: string) {
-    if (previewingVoiceId === voiceId && (state === "loading" || state === "playing")) {
+  const handlePreview = useCallback((voiceId: string, voiceName: string) => {
+    if (previewingRef.current === voiceId && (state === "loading" || state === "playing")) {
       stop();
+      previewingRef.current = null;
       setPreviewingVoiceId(null);
       return;
     }
+    if (previewingRef.current !== null) return;
+    previewingRef.current = voiceId;
     setPreviewingVoiceId(voiceId);
     speak(`Hi, I'm ${voiceName}. This is what I sound like.`, voiceId).then(() => {
+      previewingRef.current = null;
       setPreviewingVoiceId(null);
     });
-  }
+  }, [state, speak, stop]);
 
   function handleChange(voiceId: string) {
     stop();
@@ -56,16 +63,18 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
     return previewingVoiceId === voiceId && (state === "loading" || state === "playing");
   }
 
-  function renderVoiceGroup(voices: typeof ELEVENLABS_VOICES, label: string) {
+  function renderVoiceGroup(voices: typeof DEEPGRAM_VOICES, label: string) {
     return (
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
         <div className="flex flex-wrap gap-2">
           {voices.map((v) => (
-            <button
+            <div
               key={v.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => handleChange(v.id)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleChange(v.id); } }}
               className={[
                 "flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors cursor-pointer",
                 value === v.id
@@ -89,12 +98,12 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
                 aria-label={isVoiceActive(v.id) ? "Stop preview" : `Preview ${v.name}`}
               >
                 {isVoiceActive(v.id) ? (
-                  <Square className="size-3" />
+                  <span className="block size-2.5 rounded-[1px] bg-current" />
                 ) : (
                   <Volume2 className="size-3.5" />
                 )}
               </Button>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -128,7 +137,7 @@ function ImagePicker({ previewUrl, onFileChange }: ImagePickerProps) {
     <div className="flex items-center gap-4">
       <div className="size-20 shrink-0 rounded-lg border bg-muted flex items-center justify-center overflow-hidden">
         {previewUrl ? (
-          <Image src={previewUrl} alt="Avatar preview" width={80} height={80} className="object-cover size-full" />
+          <Image src={previewUrl} alt="Avatar preview" width={80} height={80} className="object-cover size-full" unoptimized />
         ) : (
           <UserCircle className="size-10 text-muted-foreground" />
         )}
@@ -199,7 +208,7 @@ function AvatarForm({
 }: AvatarFormProps) {
   const [name, setName] = useState(initial.name ?? "");
   const [personality, setPersonality] = useState(initial.personality ?? "");
-  const [voiceId, setVoiceId] = useState(initial.voiceId ?? ELEVENLABS_VOICES[0].id);
+  const [voiceId, setVoiceId] = useState(initial.voiceId ?? DEEPGRAM_VOICES[0].id);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [existingImageUrl] = useState<string | null>(initial.existingImageUrl ?? null);
   const [imageRemoved, setImageRemoved] = useState(false);
@@ -280,9 +289,11 @@ interface AvatarCardProps {
 function AvatarCard({ avatar }: AvatarCardProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const avatarImageVersion = useAvatarImageVersion();
+  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
-  const voice = ELEVENLABS_VOICES.find((v) => v.id === avatar.voiceId);
-  const imageUrl = getAvatarImageUrl(avatar);
+  const voice = DEEPGRAM_VOICES.find((v) => v.id === avatar.voiceId);
+  const imageUrl = getAvatarImageUrl(avatar, avatarImageVersion);
 
   const updateMutation = useMutation({
     mutationFn: (values: AvatarFormValues) => {
@@ -293,7 +304,8 @@ function AvatarCard({ avatar }: AvatarCardProps) {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.update(avatar.id, formData);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      if (variables.imageFile) bumpAvatarImageVersion();
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setEditing(false);
     },
@@ -334,6 +346,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
                   width={48}
                   height={48}
                   className="object-cover size-full"
+                  unoptimized
                 />
               ) : (
                 <UserCircle className="size-7 text-muted-foreground" />
@@ -396,6 +409,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
 export function AvatarsSection() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
   const { data, isLoading } = useQuery({
     queryKey: ["avatars"],
@@ -411,7 +425,8 @@ export function AvatarsSection() {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.create(formData);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      if (variables.imageFile) bumpAvatarImageVersion();
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setCreating(false);
     },

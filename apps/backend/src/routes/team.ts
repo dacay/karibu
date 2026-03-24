@@ -110,26 +110,21 @@ teamRouter.post('/invite', zValidator('json', inviteSchema), async (c) => {
 
     try {
 
-      // Check if user already exists (globally unique email)
+      // Check if user already exists in this organization
       const [existing] = await db
-        .select({ id: users.id, organizationId: users.organizationId })
+        .select({ id: users.id })
         .from(users)
-        .where(eq(users.email, email))
+        .where(
+          and(
+            eq(users.email, email),
+            eq(users.organizationId, auth.organizationId)
+          )
+        )
         .limit(1);
 
       if (existing) {
 
-        if (existing.organizationId === auth.organizationId) {
-
-          alreadyExists.push(email);
-
-        } else {
-
-          // Email belongs to a different organization
-          failed.push(email);
-          logger.warn({ email, requestingOrgId: auth.organizationId }, 'Invite failed: email exists in another organization.');
-        }
-
+        alreadyExists.push(email);
         continue;
       }
 

@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { Keyboard, Mic, CheckCircle2 } from "lucide-react";
+import { Keyboard, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { ChatAgentAvatar } from "./ChatAgentAvatar";
@@ -30,6 +29,7 @@ function extractText(message: UIMessage): string {
 export function ChatInterface({
   endpoint,
   chatId,
+  initialMessages,
   microlearningId,
   avatar,
   autoPlayVoice = false,
@@ -50,6 +50,7 @@ export function ChatInterface({
 
   const { messages, sendMessage, status } = useChat({
     id: chatId,
+    messages: initialMessages,
     transport: new DefaultChatTransport({
       api: endpoint,
       headers: () => {
@@ -115,14 +116,28 @@ export function ChatInterface({
     useVoiceInput(handleVoiceTranscript, handleNoSpeech);
 
   // Keep refs up-to-date so async callbacks always call the latest version
-  const startListeningRef = useRef(startListening);
-  const stopListeningRef  = useRef(stopListening);
-  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
-  useEffect(() => { stopListeningRef.current  = stopListening;  }, [stopListening]);
+  const startListeningRef   = useRef(startListening);
+  const stopListeningRef    = useRef(stopListening);
+  const discardListeningRef = useRef(discardListening);
+  const stopTTSRef          = useRef(stop);
+  useEffect(() => { startListeningRef.current   = startListening;   }, [startListening]);
+  useEffect(() => { stopListeningRef.current    = stopListening;    }, [stopListening]);
+  useEffect(() => { discardListeningRef.current = discardListening; }, [discardListening]);
+  useEffect(() => { stopTTSRef.current          = stop;             }, [stop]);
 
   // Incremented each time a new speak() call starts; lets old .finally() callbacks
   // detect they were superseded and skip restarting the mic.
   const ttsGenerationRef = useRef(0);
+
+  // Stop voice (TTS + mic) when the learner navigates away from the chat page
+  useEffect(() => {
+    return () => {
+      ttsGenerationRef.current += 1;
+      stopTTSRef.current();
+      discardListeningRef.current();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Start mic when switching to voice mode; stop it when leaving
   useEffect(() => {
@@ -215,12 +230,6 @@ export function ChatInterface({
             <p className="text-xs text-muted-foreground">Speaking...</p>
           )}
         </div>
-        {isCompleted && (
-          <Badge variant="outline" className="shrink-0 gap-1 border-green-500 text-green-600">
-            <CheckCircle2 className="size-3" />
-            Completed
-          </Badge>
-        )}
         <Button
           type="button"
           variant={mode === "voice" ? "default" : "outline"}
@@ -248,6 +257,7 @@ export function ChatInterface({
         messages={(messages as UIMessage[]).filter(
           (m) => !(m.role === "user" && extractText(m) === "__start__")
         )}
+        chatId={chatId}
         isLoading={isLoading}
         avatar={resolvedAvatar}
         speakingMessageId={speakingMessageId}

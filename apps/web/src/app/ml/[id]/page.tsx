@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfetti } from "@/hooks/useConfetti";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,11 +31,11 @@ import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
 import { api, type Avatar as AvatarType } from "@/lib/api";
 import type { ChatAvatar } from "@/features/chat";
-
-const ASSETS_CDN_BASE = process.env.NEXT_PUBLIC_ASSETS_CDN_URL ?? "https://cdn.karibu.ai";
+import type { UIMessage } from "ai";
+import { getAssetUrl } from "@/lib/assets";
 
 function getAvatarImageUrl(imageS3Key: string | null): string | null {
-  return imageS3Key ? `${ASSETS_CDN_BASE}/${imageS3Key}` : null;
+  return imageS3Key ? getAssetUrl(imageS3Key) : null;
 }
 
 function buildChatAvatar(avatar: AvatarType | null): ChatAvatar | undefined {
@@ -68,10 +69,12 @@ export default function MicrolearningChatPage() {
   const { theme, setTheme } = useTheme();
   const queryClient = useQueryClient();
 
-  // Stable chatId for this session
-  const chatId = useRef(crypto.randomUUID()).current;
+  // Resolved chatId + prior messages — set once when the session loads
+  const chatIdRef = useRef<string | null>(null);
+  const initialMessagesRef = useRef<UIMessage[]>([]);
 
   const [isCompleted, setIsCompleted] = useState(false);
+  const { fire: fireConfetti } = useConfetti();
 
   // Load ML details
   const { data: mlData, isLoading: mlLoading } = useQuery({
@@ -79,6 +82,35 @@ export default function MicrolearningChatPage() {
     queryFn: () => api.microlearnings.getById(id),
     enabled: !!id && !!user,
   });
+
+  // Load previous chat session (chatId + messages) for this ML.
+  // gcTime: 0 clears the cache on unmount so each visit fetches fresh data.
+  // staleTime: Infinity prevents background refetches while the page is open.
+  const { data: sessionData, isLoading: sessionLoading } = useQuery({
+    queryKey: ["chat", "ml", id],
+    queryFn: () => api.chat.loadMLSession(id),
+    enabled: !!id && !!user,
+    staleTime: Infinity,
+    gcTime: 0,
+  });
+
+  // Invalidate the learner feed on unmount so "In Progress" is visible when
+  // the user navigates back, without waiting for a manual refresh.
+  useEffect(() => {
+    return () => {
+      queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Resolve chatId: use existing one if found, otherwise generate a stable new one
+  if (!chatIdRef.current) {
+    if (sessionData) {
+      chatIdRef.current = sessionData.chatId ?? crypto.randomUUID();
+      initialMessagesRef.current = (sessionData.messages as UIMessage[]) ?? [];
+    }
+  }
+  const chatId = chatIdRef.current ?? crypto.randomUUID();
 
   // Load user profile (for preferred avatar — only for non-admin users)
   const { data: profileData } = useQuery({
@@ -128,11 +160,17 @@ export default function MicrolearningChatPage() {
       return buildChatAvatar(ml.avatar);
     }
 
-    // Learner: check for preferred avatar
+    // Learner: check for preferred avatar, then org default, then ML avatar
     const preferredAvatarId = profileData?.user.preferredAvatarId;
     if (preferredAvatarId && avatarsData?.avatars) {
       const preferredAvatar = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
       if (preferredAvatar) return buildChatAvatar(preferredAvatar);
+    }
+
+    const defaultAvatarId = profileData?.user.defaultAvatarId;
+    if (defaultAvatarId && avatarsData?.avatars) {
+      const defaultAvatar = avatarsData.avatars.find((a) => a.id === defaultAvatarId);
+      if (defaultAvatar) return buildChatAvatar(defaultAvatar);
     }
 
     return buildChatAvatar(ml.avatar);
@@ -140,13 +178,16 @@ export default function MicrolearningChatPage() {
 
   const handleComplete = useCallback(() => {
     setIsCompleted(true);
+    // fireConfetti();
     queryClient.invalidateQueries({ queryKey: ["ml", id] });
     queryClient.invalidateQueries({ queryKey: ["microlearnings", "my"] });
-  }, [queryClient, id]);
+    queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
+    queryClient.invalidateQueries({ queryKey: ["chat", "ml", id] });
+  }, [queryClient, id, fireConfetti]);
 
   const initials = user?.email ? getInitials(user.email) : "?";
 
-  if (authLoading || mlLoading) {
+  if (authLoading || mlLoading || sessionLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner className="size-8" />
@@ -174,7 +215,7 @@ export default function MicrolearningChatPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.back()}
+            onClick={() => user?.role === "admin" ? router.push("/microlearnings") : router.back()}
             aria-label="Go back"
           >
             <ArrowLeft className="size-4" />
@@ -272,6 +313,7 @@ export default function MicrolearningChatPage() {
         <ChatInterface
           endpoint={CHAT_ENDPOINTS.ml}
           chatId={chatId}
+          initialMessages={initialMessagesRef.current}
           microlearningId={id}
           avatar={effectiveAvatar}
           autoPlayVoice={false}
