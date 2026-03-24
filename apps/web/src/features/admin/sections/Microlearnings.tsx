@@ -530,7 +530,7 @@ function MlRow({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem asChild>
-            <a href={`/ml/${ml.id}`} target="_blank" rel="noopener noreferrer">
+            <a href={`/ml/${ml.id}?test=true`} target="_blank" rel="noopener noreferrer">
               <FlaskConical className="size-3.5 mr-2" />
               Test
             </a>
