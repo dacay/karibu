@@ -15,13 +15,27 @@ import {
   Link,
   Check,
   X,
+  ChevronRight,
+  ArrowLeft,
+  Plus,
+  Pencil,
+  UsersRound,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
-import { api, type TeamMember, type InviteResult } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { api, type TeamMember, type InviteResult, type UserGroup } from "@/lib/api";
+import { LearnerDetailView } from "./LearnerDetail";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -100,13 +114,11 @@ function InviteForm({ onClose }: InviteFormProps) {
   const handleInputChange = (value: string) => {
     setInput(value);
 
-    // Split by comma or newline to handle both separators
     const separatorRegex = /[,\n]/;
     if (separatorRegex.test(value)) {
       const parts = value.split(separatorRegex);
       const newEmails: string[] = [];
 
-      // Process all parts except the last one (which may be incomplete)
       for (let i = 0; i < parts.length - 1; i++) {
         const trimmed = parts[i].trim();
         if (trimmed && isValidEmail(trimmed) && !chips.includes(trimmed) && !newEmails.includes(trimmed)) {
@@ -114,12 +126,10 @@ function InviteForm({ onClose }: InviteFormProps) {
         }
       }
 
-      // Update chips with all new emails at once
       if (newEmails.length > 0) {
         setChips((prevChips) => [...prevChips, ...newEmails]);
       }
 
-      // Keep the last part as the current input
       setInput(parts[parts.length - 1]);
     }
   };
@@ -138,7 +148,6 @@ function InviteForm({ onClose }: InviteFormProps) {
     e.preventDefault();
     setResult(null);
 
-    // Collect all emails including any remaining input
     let allEmails = [...chips];
     if (input.trim()) {
       const trimmed = input.trim();
@@ -302,7 +311,7 @@ function MemberActions({ member, onAction, isPending, copiedUserId }: MemberActi
         className="size-7 text-muted-foreground hover:text-foreground"
         title="Copy sign-in link"
         disabled={isPending}
-        onClick={() => onAction("copyLink", member.id)}
+        onClick={(e) => { e.stopPropagation(); onAction("copyLink", member.id); }}
       >
         {isCopied ? <Check className="size-3.5 text-green-600" /> : <Link className="size-3.5" />}
       </Button>
@@ -312,7 +321,7 @@ function MemberActions({ member, onAction, isPending, copiedUserId }: MemberActi
         className="size-7 text-muted-foreground hover:text-foreground"
         title="Resend invitation email"
         disabled={isPending}
-        onClick={() => onAction("resend", member.id)}
+        onClick={(e) => { e.stopPropagation(); onAction("resend", member.id); }}
       >
         <Mail className="size-3.5" />
       </Button>
@@ -322,7 +331,7 @@ function MemberActions({ member, onAction, isPending, copiedUserId }: MemberActi
         className="size-7 text-muted-foreground hover:text-foreground"
         title="Regenerate sign-in token and resend email"
         disabled={isPending}
-        onClick={() => onAction("regenerate", member.id)}
+        onClick={(e) => { e.stopPropagation(); onAction("regenerate", member.id); }}
       >
         <RefreshCw className="size-3.5" />
       </Button>
@@ -332,7 +341,7 @@ function MemberActions({ member, onAction, isPending, copiedUserId }: MemberActi
         className="size-7 text-muted-foreground hover:text-destructive"
         title="Remove from team"
         disabled={isPending}
-        onClick={() => onAction("remove", member.id)}
+        onClick={(e) => { e.stopPropagation(); onAction("remove", member.id); }}
       >
         <Trash2 className="size-3.5" />
       </Button>
@@ -348,11 +357,21 @@ interface MemberRowProps {
   isPending: boolean;
   onAction: (action: "resend" | "regenerate" | "remove" | "copyLink", id: string) => void;
   copiedUserId: string | null;
+  onSelect: (member: TeamMember) => void;
 }
 
-function MemberRow({ member, isLast, isPending, onAction, copiedUserId }: MemberRowProps) {
+function MemberRow({ member, isLast, isPending, onAction, copiedUserId, onSelect }: MemberRowProps) {
+  const isClickable = member.role !== "admin";
+
   return (
-    <tr className={["hover:bg-muted/30 transition-colors", !isLast ? "border-b" : ""].join(" ")}>
+    <tr
+      className={[
+        "transition-colors",
+        !isLast ? "border-b" : "",
+        isClickable ? "hover:bg-muted/50 cursor-pointer" : "hover:bg-muted/30",
+      ].join(" ")}
+      onClick={isClickable ? () => onSelect(member) : undefined}
+    >
       <td className="px-5 py-3">
         <div className="flex items-center gap-2 min-w-0">
           <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium shrink-0 uppercase">
@@ -371,21 +390,27 @@ function MemberRow({ member, isLast, isPending, onAction, copiedUserId }: Member
       <td className="px-4 py-3 whitespace-nowrap text-muted-foreground hidden md:table-cell">
         {member.tokenLastUsedAt ? formatDate(member.tokenLastUsedAt) : "—"}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap">
+      <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
         <MemberActions member={member} onAction={onAction} isPending={isPending} copiedUserId={copiedUserId} />
       </td>
+      {isClickable && (
+        <td className="px-2 py-3">
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </td>
+      )}
     </tr>
   );
 }
 
-// ─── Main section ─────────────────────────────────────────────────────────────
+// ─── Members tab ────────────────────────────────────────────────────────────
 
-export function TeamSection() {
+function MembersTab() {
   const queryClient = useQueryClient();
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["team"],
@@ -448,26 +473,31 @@ export function TeamSection() {
     else removeMutation.mutate(userId);
   };
 
+  // If a member is selected, show their detail view
+  if (selectedMember) {
+    return (
+      <LearnerDetailView
+        userId={selectedMember.id}
+        email={selectedMember.email}
+        onBack={() => setSelectedMember(null)}
+      />
+    );
+  }
+
   const members = data?.users ?? [];
   const admins = members.filter((m) => m.role === "admin");
   const regularUsers = members.filter((m) => m.role === "user");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Team</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your organization's members and their access.
-          </p>
-        </div>
-        {!showInviteForm && (
+    <div className="space-y-4">
+      {!showInviteForm && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setShowInviteForm(true)}>
             <UserPlus className="size-4 mr-1.5" />
             Invite
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {showInviteForm && (
         <InviteForm onClose={() => setShowInviteForm(false)} />
@@ -525,6 +555,7 @@ export function TeamSection() {
                     Last sign-in
                   </th>
                   <th className="px-4 py-3 w-0" />
+                  <th className="px-2 py-3 w-0" />
                 </tr>
               </thead>
               <tbody>
@@ -536,11 +567,12 @@ export function TeamSection() {
                     isPending={pendingUserId === member.id}
                     onAction={handleAction}
                     copiedUserId={copiedUserId}
+                    onSelect={setSelectedMember}
                   />
                 ))}
                 {admins.length > 0 && regularUsers.length > 0 && (
                   <tr>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <Separator />
                     </td>
                   </tr>
@@ -553,6 +585,7 @@ export function TeamSection() {
                     isPending={pendingUserId === member.id}
                     onAction={handleAction}
                     copiedUserId={copiedUserId}
+                    onSelect={setSelectedMember}
                   />
                 ))}
               </tbody>
@@ -560,6 +593,377 @@ export function TeamSection() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ─── Groups tab ──────────────────────────────────────────────────────────────
+
+function GroupsTab() {
+  const queryClient = useQueryClient();
+  const [newGroupName, setNewGroupName] = useState("");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<UserGroup | null>(null);
+  const [editName, setEditName] = useState("");
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["userGroups"],
+    queryFn: () => api.userGroups.list(),
+  });
+
+  const { data: teamData } = useQuery({
+    queryKey: ["team"],
+    queryFn: () => api.team.list(),
+  });
+
+  const { data: membersData, isLoading: membersLoading } = useQuery({
+    queryKey: ["userGroups", expandedGroupId, "members"],
+    queryFn: () => api.userGroups.listMembers(expandedGroupId!),
+    enabled: !!expandedGroupId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (name: string) => api.userGroups.create({ name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userGroups"] });
+      setNewGroupName("");
+      setShowCreateDialog(false);
+    },
+  });
+
+  const renameMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.userGroups.update(id, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userGroups"] });
+      setEditingGroup(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.userGroups.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userGroups"] });
+      if (expandedGroupId) setExpandedGroupId(null);
+    },
+  });
+
+  const addMemberMutation = useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
+      api.userGroups.addMember(groupId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userGroups"] });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
+      api.userGroups.removeMember(groupId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["userGroups"] });
+    },
+  });
+
+  const groups = data?.groups ?? [];
+  const allUsers = (teamData?.users ?? []).filter((u) => u.role === "user");
+  const groupMembers = membersData?.members ?? [];
+  const groupMemberIds = new Set(groupMembers.map((m) => m.id));
+  const nonMembers = allUsers.filter((u) => !groupMemberIds.has(u.id));
+
+  if (isLoading) {
+    return (
+      <Card className="min-h-48 flex items-center justify-center">
+        <Spinner className="size-5 text-muted-foreground" />
+      </Card>
+    );
+  }
+
+  // Expanded group detail view
+  if (expandedGroupId) {
+    const group = groups.find((g) => g.id === expandedGroupId);
+    if (!group) return null;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setExpandedGroupId(null)}>
+            <ArrowLeft className="size-4 mr-1" />
+            Back
+          </Button>
+          <h3 className="text-lg font-semibold">{group.name}</h3>
+          {group.isAll && (
+            <Badge variant="outline" className="text-xs">Auto-managed</Badge>
+          )}
+        </div>
+
+        {/* Add member */}
+        {!group.isAll && nonMembers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              id="add-member-select"
+              className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  addMemberMutation.mutate({ groupId: group.id, userId: e.target.value });
+                  e.target.value = "";
+                }
+              }}
+            >
+              <option value="" disabled>Add a member...</option>
+              {nonMembers.map((u) => (
+                <option key={u.id} value={u.id}>{u.email}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {membersLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner className="size-5 text-muted-foreground" />
+          </div>
+        ) : groupMembers.length === 0 ? (
+          <Card className="py-8 flex flex-col items-center justify-center gap-2">
+            <Users className="size-8 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">No members in this group.</p>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left font-medium text-muted-foreground px-5 py-3 w-full">Member</th>
+                    {!group.isAll && <th className="px-4 py-3 w-0" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupMembers.map((member, i) => (
+                    <tr key={member.id} className={["hover:bg-muted/30 transition-colors", i < groupMembers.length - 1 ? "border-b" : ""].join(" ")}>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="size-7 rounded-full bg-muted flex items-center justify-center text-xs font-medium shrink-0 uppercase">
+                            {member.email[0]}
+                          </div>
+                          <span>{member.email}</span>
+                        </div>
+                      </td>
+                      {!group.isAll && (
+                        <td className="px-4 py-3">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-destructive"
+                            title="Remove from group"
+                            onClick={() => removeMemberMutation.mutate({ groupId: group.id, userId: member.id })}
+                          >
+                            <X className="size-3.5" />
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="size-4 mr-1.5" />
+              New group
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create group</DialogTitle>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newGroupName.trim()) createMutation.mutate(newGroupName.trim());
+              }}
+              className="space-y-4"
+            >
+              <Input
+                placeholder="Group name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => setShowCreateDialog(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={!newGroupName.trim() || createMutation.isPending}>
+                  {createMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
+                  Create
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Rename dialog */}
+      <Dialog open={!!editingGroup} onOpenChange={(open) => !open && setEditingGroup(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename group</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingGroup && editName.trim()) {
+                renameMutation.mutate({ id: editingGroup.id, name: editName.trim() });
+              }
+            }}
+            className="space-y-4"
+          >
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setEditingGroup(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={!editName.trim() || renameMutation.isPending}>
+                {renameMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
+                Save
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {groups.length === 0 ? (
+        <Card className="min-h-48 flex flex-col items-center justify-center gap-3">
+          <UsersRound className="size-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No groups yet. Create one to organize your learners.</p>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left font-medium text-muted-foreground px-5 py-3 w-full">Group</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 whitespace-nowrap">Members</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3 whitespace-nowrap hidden sm:table-cell">Created</th>
+                  <th className="px-4 py-3 w-0" />
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((group, i) => (
+                  <tr
+                    key={group.id}
+                    className={["hover:bg-muted/50 cursor-pointer transition-colors", i < groups.length - 1 ? "border-b" : ""].join(" ")}
+                    onClick={() => setExpandedGroupId(group.id)}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <UsersRound className="size-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium">{group.name}</span>
+                        {group.isAll && (
+                          <Badge variant="outline" className="text-[10px]">All</Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{group.memberCount}</td>
+                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{formatDate(group.createdAt)}</td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {!group.isAll && (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-foreground"
+                            title="Rename"
+                            onClick={() => {
+                              setEditingGroup(group);
+                              setEditName(group.name);
+                            }}
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-destructive"
+                            title="Delete group"
+                            onClick={() => {
+                              if (confirm(`Delete group "${group.name}"?`)) {
+                                deleteMutation.mutate(group.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Main section ─────────────────────────────────────────────────────────────
+
+type TabId = "members" | "groups";
+
+export function TeamSection() {
+  const [activeTab, setActiveTab] = useState<TabId>("members");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight">Team</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage your organization's members, groups, and view learner activity.
+        </p>
+      </div>
+
+      {/* Tab buttons */}
+      <div className="flex gap-1 border-b">
+        {([
+          { id: "members" as TabId, label: "Members", icon: Users },
+          { id: "groups" as TabId, label: "Groups", icon: UsersRound },
+        ]).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setActiveTab(id)}
+            className={[
+              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors cursor-pointer",
+              activeTab === id
+                ? "border-foreground text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/50",
+            ].join(" ")}
+          >
+            <Icon className="size-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === "members" && <MembersTab />}
+      {activeTab === "groups" && <GroupsTab />}
     </div>
   );
 }

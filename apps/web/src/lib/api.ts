@@ -336,6 +336,54 @@ export interface DashboardMetrics {
   completionsThisMonth: number;
 }
 
+export interface LearnerSummary {
+  id: string;
+  email: string;
+  createdAt: string;
+  completedCount: number;
+  activeCount: number;
+  chatCount: number;
+  lastActive: string | null;
+}
+
+export interface LearnerMLHistory {
+  id: string;
+  microlearningId: string;
+  title: string;
+  status: "active" | "completed" | "expired";
+  openedAt: string;
+  completedAt: string | null;
+  expiredAt: string | null;
+}
+
+export interface LearnerChatSession {
+  id: string;
+  type: "microlearning" | "discussion";
+  microlearningId: string | null;
+  microlearningTitle: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatTranscriptMessage {
+  id: string;
+  role: string;
+  parts: unknown;
+  createdAt: string;
+}
+
+export interface ChatTranscript {
+  chat: {
+    id: string;
+    type: "microlearning" | "discussion";
+    microlearningId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  messages: ChatTranscriptMessage[];
+}
+
 export interface MLChatSession {
   chatId: string | null;
   messages: unknown[]; // UIMessage[] — typed at the call site
@@ -519,6 +567,8 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ success: boolean }>(`/user-groups/${id}`, { method: "DELETE" }),
+    listMembers: (groupId: string) =>
+      request<{ members: Array<{ id: string; email: string; role: string; membershipId: string }> }>(`/user-groups/${groupId}/members`),
     addMember: (groupId: string, userId: string) =>
       request<{ added: string[] }>(`/user-groups/${groupId}/members`, {
         method: "POST",
@@ -585,6 +635,16 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+  },
+  adminLearners: {
+    list: () =>
+      request<{ learners: LearnerSummary[] }>("/admin/learners"),
+    history: (userId: string) =>
+      request<{ history: LearnerMLHistory[] }>(`/admin/learners/${userId}/history`),
+    chats: (userId: string) =>
+      request<{ chats: LearnerChatSession[] }>(`/admin/learners/${userId}/chats`),
+    chatTranscript: (userId: string, chatId: string) =>
+      request<ChatTranscript>(`/admin/learners/${userId}/chats/${chatId}`),
   },
   learner: {
     feed: () => request<LearnerFeed>("/microlearnings/feed"),
