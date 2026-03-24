@@ -301,6 +301,8 @@ sequencesRouter.delete('/:id/assignments/:groupId', requireRole('admin'), async 
 
   logger.info({ sequenceId: id, groupId }, 'Sequence assignment deleted.');
 
+  broadcastFeedUpdate(auth.organizationId);
+
   return c.json({ success: true });
 });
 

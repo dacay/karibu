@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -170,11 +171,9 @@ function AssignPopover({ seqId }: { seqId: string }) {
                   {isMutating ? (
                     <Spinner className="size-3.5 shrink-0" />
                   ) : (
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
-                      onChange={() => handleToggle(group.id)}
-                      className="rounded border-input"
+                      onCheckedChange={() => handleToggle(group.id)}
                     />
                   )}
                   <span className="text-sm flex-1 truncate">{group.name}</span>
