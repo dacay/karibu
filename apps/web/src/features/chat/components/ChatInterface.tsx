@@ -134,8 +134,8 @@ export function ChatInterface({
     }
   }, [mode]);
 
-  // Stop the loop and let the user decide when to continue
-  const handleStopVoice = useCallback(() => {
+  // Pause the loop — stop TTS and mic, stay in voice mode
+  const handlePauseVoice = useCallback(() => {
     // Sync ref immediately — stop() may fire audio events before React commits setVoicePaused
     voicePausedRef.current = true;
     ttsGenerationRef.current += 1; // invalidate any pending .finally()
@@ -143,7 +143,18 @@ export function ChatInterface({
     setSpeakingMessageId(null);
     discardListening(); // stop mic and throw away any recorded audio
     setVoicePaused(true);
-  }, [stop]);
+  }, [stop, discardListening]);
+
+  // Stop voice mode entirely — exit back to text mode
+  const handleStopVoice = useCallback(() => {
+    voicePausedRef.current = true;
+    ttsGenerationRef.current += 1;
+    stop();
+    setSpeakingMessageId(null);
+    discardListening();
+    setVoicePaused(true);
+    setMode("text");
+  }, [stop, discardListening]);
 
   // Resume: unpause and start listening
   const handleStartVoice = useCallback(() => {
@@ -266,6 +277,7 @@ export function ChatInterface({
         stopListening={stopListening}
         isSpeaking={isSpeaking}
         voicePaused={voicePaused}
+        onPauseVoice={handlePauseVoice}
         onStopVoice={handleStopVoice}
         onStartVoice={handleStartVoice}
       />

@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent } from "react";
-import { Send, Mic, MicOff, Loader2, Square } from "lucide-react";
+import { Send, Mic, MicOff, Loader2, Square, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { VoiceInputState } from "../hooks/useVoiceInput";
@@ -19,6 +19,7 @@ interface ChatInputProps {
   // Voice mode controls
   isSpeaking: boolean;
   voicePaused: boolean;
+  onPauseVoice: () => void;
   onStopVoice: () => void;
   onStartVoice: () => void;
 }
@@ -35,6 +36,7 @@ export function ChatInput({
   stopListening,
   isSpeaking,
   voicePaused,
+  onPauseVoice,
   onStopVoice,
   onStartVoice,
 }: ChatInputProps) {
@@ -48,7 +50,7 @@ export function ChatInput({
     }
   };
 
-  // Voice mode: single large button — red stop when loop is running, blue mic when paused
+  // Voice mode: pause + stop when loop is running, resume mic when paused
   if (mode === "voice") {
     const loopRunning = !voicePaused;
     const isProcessing = voiceState === "transcribing" || isLoading;
@@ -67,23 +69,52 @@ export function ChatInput({
       <div className="shrink-0 border-t bg-background px-4 py-6">
         <div className="flex flex-col items-center gap-3">
           <p className="text-sm text-muted-foreground">{statusText}</p>
-          <Button
-            type="button"
-            size="icon"
-            variant={loopRunning ? "destructive" : "default"}
-            className="h-16 w-16 rounded-full"
-            onClick={loopRunning ? onStopVoice : onStartVoice}
-            disabled={isProcessing}
-            aria-label={loopRunning ? "Stop" : "Start speaking"}
-          >
-            {isProcessing ? (
-              <Loader2 className="size-6 animate-spin" />
-            ) : loopRunning ? (
-              <Square className="size-6 fill-current" />
-            ) : (
-              <Mic className="size-6" />
-            )}
-          </Button>
+          {loopRunning ? (
+            <div className="flex items-center gap-4">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-16 w-16 rounded-full"
+                onClick={onPauseVoice}
+                disabled={isProcessing}
+                aria-label="Pause"
+              >
+                {isProcessing ? (
+                  <Loader2 className="size-6 animate-spin" />
+                ) : (
+                  <Pause className="size-6 fill-current" />
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="destructive"
+                className="h-16 w-16 rounded-full"
+                onClick={onStopVoice}
+                disabled={isProcessing}
+                aria-label="Stop voice mode"
+              >
+                <Square className="size-6 fill-current" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              size="icon"
+              variant="default"
+              className="h-16 w-16 rounded-full"
+              onClick={onStartVoice}
+              disabled={isProcessing}
+              aria-label="Start speaking"
+            >
+              {isProcessing ? (
+                <Loader2 className="size-6 animate-spin" />
+              ) : (
+                <Mic className="size-6" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
     );
