@@ -41,6 +41,7 @@
     "postgres": "^3.4.8",
     "postmark": "^4.0.7",
     "twilio": "^5.12.1",
+    "ws": "^8.20.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -50,6 +51,7 @@
     "@types/pdf-parse": "^1.1.5",
     "@types/pg": "^8.16.0",
     "@types/twilio": "^3.19.3",
+    "@types/ws": "^8.18.1",
     "chokidar-cli": "^3.0.0",
     "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.8",
