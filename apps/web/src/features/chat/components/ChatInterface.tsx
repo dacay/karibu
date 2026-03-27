@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { ChatAgentAvatar } from "./ChatAgentAvatar";
-import { useTTS } from "../hooks/useTTS";
+import { useStreamTTS, type StreamTTSController } from "../hooks/useStreamTTS";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { DEFAULT_AVATAR } from "../constants";
 import type { ChatConfig } from "../types";
@@ -25,6 +25,29 @@ function extractText(message: UIMessage): string {
     .map((p) => (p as { type: "text"; text: string }).text)
     .join("");
 }
+
+// ─── Markdown stripping (shared with useTTS) ────────────────────────────────
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s+/g, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/~~(.+?)~~/g, "$1")
+    .replace(/`{1,3}([^`]*)`{1,3}/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/!?\[.*?\]\(.*?\)/g, "")
+    .replace(/^[-*_]{3,}$/gm, "")
+    .replace(/\n{2,}/g, " ")
+    .trim();
+}
+
+// ─── Token buffering config ─────────────────────────────────────────────────
+
+/** Number of words to accumulate before sending a chunk to TTS. */
+const MIN_WORDS = 3;
 
 export function ChatInterface({
   endpoint,
@@ -46,7 +69,12 @@ export function ChatInterface({
   const [voicePaused, setVoicePaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  const { speak, stop, isSpeaking } = useTTS();
+  // Streaming TTS
+  const { startStream, stop: stopStreamTTS, isSpeaking } = useStreamTTS();
+  const streamControllerRef = useRef<StreamTTSController | null>(null);
+  const sentCharsRef = useRef(0);
+  const chunkBufferRef = useRef("");
+
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const { messages, sendMessage, status } = useChat({
@@ -98,13 +126,13 @@ export function ChatInterface({
   // Voice transcript handler — auto-send in voice mode, fill input in text mode
   const handleVoiceTranscript = useCallback((text: string) => {
     if (modeRef.current === "voice") {
-      stop();
+      stopStreamTTS();
       setSpeakingMessageId(null);
       sendMessage({ text });
     } else {
       setInput((prev) => (prev ? `${prev} ${text}` : text));
     }
-  }, [sendMessage, stop]);
+  }, [sendMessage, stopStreamTTS]);
 
   // When silence detected with no speech, restart mic if loop is running
   const handleNoSpeech = useCallback(() => {
@@ -120,13 +148,11 @@ export function ChatInterface({
   const startListeningRef   = useRef(startListening);
   const stopListeningRef    = useRef(stopListening);
   const discardListeningRef = useRef(discardListening);
-  const stopTTSRef          = useRef(stop);
   useEffect(() => { startListeningRef.current   = startListening;   }, [startListening]);
   useEffect(() => { stopListeningRef.current    = stopListening;    }, [stopListening]);
   useEffect(() => { discardListeningRef.current = discardListening; }, [discardListening]);
-  useEffect(() => { stopTTSRef.current          = stop;             }, [stop]);
 
-  // Incremented each time a new speak() call starts; lets old .finally() callbacks
+  // Incremented each time a new speak() call starts; lets old callbacks
   // detect they were superseded and skip restarting the mic.
   const ttsGenerationRef = useRef(0);
 
@@ -134,7 +160,7 @@ export function ChatInterface({
   useEffect(() => {
     return () => {
       ttsGenerationRef.current += 1;
-      stopTTSRef.current();
+      stopStreamTTS();
       discardListeningRef.current();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,67 +178,124 @@ export function ChatInterface({
 
   // Stop the loop and let the user decide when to continue
   const handleStopVoice = useCallback(() => {
-    // Sync ref immediately — stop() may fire audio events before React commits setVoicePaused
     voicePausedRef.current = true;
-    ttsGenerationRef.current += 1; // invalidate any pending .finally()
-    stop();
+    ttsGenerationRef.current += 1;
+    stopStreamTTS();
+    streamControllerRef.current = null;
     setSpeakingMessageId(null);
-    discardListening(); // stop mic and throw away any recorded audio
+    discardListening();
     setVoicePaused(true);
-  }, [stop]);
+  }, [stopStreamTTS, discardListening]);
 
   // Resume: unpause and start listening
   const handleStartVoice = useCallback(() => {
     setVoicePaused(false);
-    voicePausedRef.current = false; // sync ref immediately so the effect sees it
+    voicePausedRef.current = false;
     startListeningRef.current();
   }, []);
 
-  // Auto-speak last assistant message when streaming finishes
+  // ─── Streaming TTS: open WS when streaming starts ───────────────────────────
+
   const prevStatusRef = useRef(status);
 
   useEffect(() => {
-
     const wasActive =
       prevStatusRef.current === "submitted" ||
       prevStatusRef.current === "streaming";
+    const justStartedStreaming =
+      prevStatusRef.current === "submitted" && status === "streaming";
+    const justFinishedStreaming = wasActive && status === "ready";
+
     prevStatusRef.current = status;
 
     const effectiveAutoPlay = autoPlayVoice || modeRef.current === "voice";
     if (!effectiveAutoPlay) return;
-    if (!wasActive || status !== "ready") return;
+
+    // When streaming starts: open the TTS WebSocket
+    if (justStartedStreaming) {
+      const last = messages[messages.length - 1] as UIMessage | undefined;
+      if (last?.role !== "assistant") return;
+
+      setSpeakingMessageId(last.id);
+      sentCharsRef.current = 0;
+      chunkBufferRef.current = "";
+
+      const generation = ++ttsGenerationRef.current;
+
+      const controller = startStream(resolvedAvatar.voiceId, () => {
+        // onDone — called when all audio has finished playing
+        setSpeakingMessageId(null);
+        if (ttsGenerationRef.current !== generation) return;
+        if (modeRef.current === "voice" && !voicePausedRef.current) {
+          startListeningRef.current();
+        }
+      });
+
+      streamControllerRef.current = controller;
+      return;
+    }
+
+    // When streaming finishes: flush remaining buffer and close the TTS stream
+    if (justFinishedStreaming && streamControllerRef.current) {
+      const last = messages[messages.length - 1] as UIMessage | undefined;
+      if (last?.role === "assistant") {
+        const fullText = stripMarkdown(extractText(last));
+        const remaining = fullText.slice(sentCharsRef.current);
+        if (remaining.length > 0) {
+          streamControllerRef.current.sendChunk(remaining);
+          sentCharsRef.current = fullText.length;
+        }
+        // Also flush anything left in the word buffer
+        if (chunkBufferRef.current.length > 0) {
+          streamControllerRef.current.sendChunk(chunkBufferRef.current);
+          chunkBufferRef.current = "";
+        }
+      }
+
+      streamControllerRef.current.finish();
+      streamControllerRef.current = null;
+      chunkBufferRef.current = "";
+    }
+
+  }, [status, messages, autoPlayVoice, startStream, resolvedAvatar.voiceId]);
+
+  // ─── Streaming TTS: send text chunks as the LLM streams ────────────────────
+
+  useEffect(() => {
+    if (status !== "streaming" || !streamControllerRef.current) return;
 
     const last = messages[messages.length - 1] as UIMessage | undefined;
     if (last?.role !== "assistant") return;
 
-    const text = extractText(last);
-    if (!text) return;
+    const fullText = stripMarkdown(extractText(last));
+    const newText = fullText.slice(sentCharsRef.current);
 
-    setSpeakingMessageId(last.id);
-    const generation = ++ttsGenerationRef.current;
+    if (newText.length === 0) return;
 
-    speak(text, resolvedAvatar.voiceId).finally(() => {
-      setSpeakingMessageId(null);
-      // Only restart the mic if this speak() wasn't superseded by a newer one or a manual stop
-      if (ttsGenerationRef.current !== generation) return;
-      if (modeRef.current === "voice" && !voicePausedRef.current) {
-        startListeningRef.current();
-      }
-    });
+    // Accumulate into buffer
+    chunkBufferRef.current += newText;
+    sentCharsRef.current = fullText.length;
 
-  }, [status, messages, autoPlayVoice, speak, resolvedAvatar.voiceId]);
+    // Send every N words for minimal latency
+    const words = chunkBufferRef.current.trim().split(/\s+/);
+    if (words.length >= MIN_WORDS) {
+      streamControllerRef.current.sendChunk(chunkBufferRef.current);
+      chunkBufferRef.current = "";
+    }
+  }, [status, messages]);
 
   const handleSend = useCallback(() => {
 
     const text = input.trim();
     if (!text || isLoading) return;
 
-    stop();
+    stopStreamTTS();
+    streamControllerRef.current = null;
     setSpeakingMessageId(null);
     sendMessage({ text });
     setInput("");
 
-  }, [input, isLoading, sendMessage, stop]);
+  }, [input, isLoading, sendMessage, stopStreamTTS]);
 
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>

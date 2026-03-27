@@ -22,7 +22,7 @@ function getToken(): string | null {
 // Silence detection thresholds
 const SILENCE_THRESHOLD        = 8;    // RMS amplitude (0–128 scale)
 const SILENCE_DURATION_INITIAL = 3000; // ms to wait before first word
-const SILENCE_DURATION_AFTER   = 1500; // ms of silence after speech ends
+const SILENCE_DURATION_AFTER   = 1000; // ms of silence after speech ends
 
 export function useVoiceInput(
   onTranscript: (text: string) => void,

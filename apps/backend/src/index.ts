@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { pinoLogger } from 'hono-pino'
+import { WebSocketServer } from 'ws'
 import { env } from './config/env.js'
 import { logger } from './config/logger.js'
 import { corsMiddleware } from './middleware/cors.js'
@@ -8,6 +9,8 @@ import { errorReporterMiddleware } from './middleware/errorReporter.js'
 import { registerRoutes } from './routes/index.js'
 import { sql, testConnection } from './db/index.js'
 import { initErrorReporter } from './utils/errorReporter.js'
+import { verifyToken } from './utils/jwt.js'
+import { handleTTSStream } from './routes/tts-stream.js'
 
 initErrorReporter()
 
@@ -49,6 +52,42 @@ const server = serve({
 }, (info) => {
 
   logger.info(`Server is running on http://localhost:${info.port}...`)
+})
+
+// ─── WebSocket upgrade handler for streaming TTS ────────────────────────────
+const wss = new WebSocketServer({ noServer: true })
+
+const DEFAULT_VOICE_ID = process.env.DEFAULT_VOICE_ID ?? 'aura-2-asteria-en'
+
+server.on('upgrade', async (request, socket, head) => {
+  const url = new URL(request.url!, `http://${request.headers.host}`)
+
+  if (url.pathname !== '/chat/tts-stream') {
+    socket.destroy()
+    return
+  }
+
+  // Authenticate via query-string token (browsers can't send WS headers)
+  const token = url.searchParams.get('token')
+  if (!token) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  try {
+    await verifyToken(token)
+  } catch {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+    socket.destroy()
+    return
+  }
+
+  const voiceId = url.searchParams.get('voiceId') ?? DEFAULT_VOICE_ID
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    handleTTSStream(ws, voiceId)
+  })
 })
 
 // Graceful shutdown
