@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 import { ChatAgentAvatar } from "./ChatAgentAvatar";
-import { useTTS } from "../hooks/useTTS";
 import { useStreamTTS, type StreamTTSController } from "../hooks/useStreamTTS";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { DEFAULT_AVATAR } from "../constants";
@@ -47,11 +46,8 @@ function stripMarkdown(text: string): string {
 
 // ─── Token buffering config ─────────────────────────────────────────────────
 
-/** Minimum characters to accumulate before sending a chunk to TTS. */
-const MIN_CHUNK_SIZE = 40;
-
-/** Characters that signal a good point to send a chunk (sentence/clause boundaries). */
-const BOUNDARY_RE = /[.!?;,:\n]\s*$/;
+/** Number of words to accumulate before sending a chunk to TTS. */
+const MIN_WORDS = 3;
 
 export function ChatInterface({
   endpoint,
@@ -73,16 +69,11 @@ export function ChatInterface({
   const [voicePaused, setVoicePaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  // Legacy TTS (non-streaming fallback — kept for autoPlayVoice in text mode)
-  const { speak, stop: stopLegacyTTS, isSpeaking: isLegacySpeaking } = useTTS();
-
   // Streaming TTS
-  const { startStream, stop: stopStreamTTS, isSpeaking: isStreamSpeaking } = useStreamTTS();
+  const { startStream, stop: stopStreamTTS, isSpeaking } = useStreamTTS();
   const streamControllerRef = useRef<StreamTTSController | null>(null);
   const sentCharsRef = useRef(0);
   const chunkBufferRef = useRef("");
-
-  const isSpeaking = isLegacySpeaking || isStreamSpeaking;
 
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
@@ -135,14 +126,13 @@ export function ChatInterface({
   // Voice transcript handler — auto-send in voice mode, fill input in text mode
   const handleVoiceTranscript = useCallback((text: string) => {
     if (modeRef.current === "voice") {
-      stopLegacyTTS();
       stopStreamTTS();
       setSpeakingMessageId(null);
       sendMessage({ text });
     } else {
       setInput((prev) => (prev ? `${prev} ${text}` : text));
     }
-  }, [sendMessage, stopLegacyTTS, stopStreamTTS]);
+  }, [sendMessage, stopStreamTTS]);
 
   // When silence detected with no speech, restart mic if loop is running
   const handleNoSpeech = useCallback(() => {
@@ -170,7 +160,6 @@ export function ChatInterface({
   useEffect(() => {
     return () => {
       ttsGenerationRef.current += 1;
-      stopLegacyTTS();
       stopStreamTTS();
       discardListeningRef.current();
     };
@@ -191,13 +180,12 @@ export function ChatInterface({
   const handleStopVoice = useCallback(() => {
     voicePausedRef.current = true;
     ttsGenerationRef.current += 1;
-    stopLegacyTTS();
     stopStreamTTS();
     streamControllerRef.current = null;
     setSpeakingMessageId(null);
     discardListening();
     setVoicePaused(true);
-  }, [stopLegacyTTS, stopStreamTTS, discardListening]);
+  }, [stopStreamTTS, discardListening]);
 
   // Resume: unpause and start listening
   const handleStartVoice = useCallback(() => {
@@ -247,47 +235,29 @@ export function ChatInterface({
       return;
     }
 
-    // When streaming finishes: flush and close the TTS stream
+    // When streaming finishes: flush remaining buffer and close the TTS stream
     if (justFinishedStreaming && streamControllerRef.current) {
       const last = messages[messages.length - 1] as UIMessage | undefined;
       if (last?.role === "assistant") {
-        // Send any remaining buffered text
         const fullText = stripMarkdown(extractText(last));
         const remaining = fullText.slice(sentCharsRef.current);
         if (remaining.length > 0) {
           streamControllerRef.current.sendChunk(remaining);
           sentCharsRef.current = fullText.length;
         }
+        // Also flush anything left in the word buffer
+        if (chunkBufferRef.current.length > 0) {
+          streamControllerRef.current.sendChunk(chunkBufferRef.current);
+          chunkBufferRef.current = "";
+        }
       }
 
       streamControllerRef.current.finish();
       streamControllerRef.current = null;
       chunkBufferRef.current = "";
-      return;
     }
 
-    // Fallback: if streaming finished but we never opened a stream (e.g. very fast response),
-    // use legacy TTS
-    if (justFinishedStreaming && !streamControllerRef.current) {
-      const last = messages[messages.length - 1] as UIMessage | undefined;
-      if (last?.role !== "assistant") return;
-
-      const text = extractText(last);
-      if (!text) return;
-
-      setSpeakingMessageId(last.id);
-      const generation = ++ttsGenerationRef.current;
-
-      speak(text, resolvedAvatar.voiceId).finally(() => {
-        setSpeakingMessageId(null);
-        if (ttsGenerationRef.current !== generation) return;
-        if (modeRef.current === "voice" && !voicePausedRef.current) {
-          startListeningRef.current();
-        }
-      });
-    }
-
-  }, [status, messages, autoPlayVoice, speak, startStream, resolvedAvatar.voiceId]);
+  }, [status, messages, autoPlayVoice, startStream, resolvedAvatar.voiceId]);
 
   // ─── Streaming TTS: send text chunks as the LLM streams ────────────────────
 
@@ -306,11 +276,9 @@ export function ChatInterface({
     chunkBufferRef.current += newText;
     sentCharsRef.current = fullText.length;
 
-    // Send when we have enough text and hit a natural boundary
-    if (
-      chunkBufferRef.current.length >= MIN_CHUNK_SIZE &&
-      BOUNDARY_RE.test(chunkBufferRef.current)
-    ) {
+    // Send every N words for minimal latency
+    const words = chunkBufferRef.current.trim().split(/\s+/);
+    if (words.length >= MIN_WORDS) {
       streamControllerRef.current.sendChunk(chunkBufferRef.current);
       chunkBufferRef.current = "";
     }
@@ -321,14 +289,13 @@ export function ChatInterface({
     const text = input.trim();
     if (!text || isLoading) return;
 
-    stopLegacyTTS();
     stopStreamTTS();
     streamControllerRef.current = null;
     setSpeakingMessageId(null);
     sendMessage({ text });
     setInput("");
 
-  }, [input, isLoading, sendMessage, stopLegacyTTS, stopStreamTTS]);
+  }, [input, isLoading, sendMessage, stopStreamTTS]);
 
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
