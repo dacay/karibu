@@ -13,6 +13,7 @@ import {
   X,
   Wand2,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import {
   Accordion,
@@ -232,6 +233,8 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(subtopic.name);
   const [editDescription, setEditDescription] = useState(subtopic.description ?? "");
+  const [showAddValue, setShowAddValue] = useState(false);
+  const [newValueContent, setNewValueContent] = useState("");
 
   const statusMutation = useMutation({
     mutationFn: (status: "active" | "rejected") => api.dna.updateSubtopicStatus(subtopic.id, status),
@@ -245,6 +248,21 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
     mutationFn: () => api.dna.synthesize(subtopic.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
     onError: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => api.dna.generate(subtopic.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+    onError: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+  });
+
+  const createValueMutation = useMutation({
+    mutationFn: (content: string) => api.dna.createValue(subtopic.id, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dna"] });
+      setNewValueContent("");
+      setShowAddValue(false);
+    },
   });
 
   const updateMutation = useMutation({
@@ -263,7 +281,8 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
     onError: (err: Error) => setDeleteError(err.message),
   });
 
-  const isRunning = subtopic.synthesisStatus === "running" || synthesizeMutation.isPending;
+  const isRunning = subtopic.synthesisStatus === "running" || synthesizeMutation.isPending || generateMutation.isPending;
+  const showGeneratePrompt = synthesizeMutation.isError || subtopic.synthesisStatus === "failed";
 
   return (
     <div className="border rounded-lg p-3 space-y-2">
@@ -353,6 +372,30 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
         </div>
       )}
 
+      {/* Generate prompt (shown when synthesis found nothing) */}
+      {showGeneratePrompt && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 space-y-2">
+          <p className="flex items-center gap-2">
+            <Sparkles className="size-4 shrink-0" />
+            Not found in documents. Would you like to generate values based on DNA and general knowledge?
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+            disabled={isRunning}
+            onClick={() => generateMutation.mutate()}
+          >
+            {generateMutation.isPending
+              ? <><Spinner className="size-3 mr-1" /> Generating...</>
+              : <><Sparkles className="size-3 mr-1" /> Generate</>}
+          </Button>
+          {generateMutation.isError && (
+            <p className="text-destructive text-xs">{generateMutation.error?.message ?? "Generation failed. Please try again."}</p>
+          )}
+        </div>
+      )}
+
       {/* Delete error */}
       {deleteError && (
         <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -379,15 +422,53 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
       )}
 
       {/* Values */}
-      {subtopic.values.length > 0 && (
+      {subtopic.status === "active" && (
         <Accordion type="single" collapsible>
           <AccordionItem value="values" className="border-0">
             <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
-              {subtopic.values.length} value{subtopic.values.length !== 1 ? "s" : ""}
+              {subtopic.values.length > 0
+                ? `${subtopic.values.length} value${subtopic.values.length !== 1 ? "s" : ""}`
+                : "No values yet"}
             </AccordionTrigger>
             <AccordionContent>
-              <div className="border rounded-lg divide-y">
-                {subtopic.values.map((v) => <ValueRow key={v.id} value={v} />)}
+              <div className="space-y-1">
+                {subtopic.values.length > 0 && (
+                  <div className="border rounded-lg divide-y">
+                    {subtopic.values.map((v) => <ValueRow key={v.id} value={v} />)}
+                  </div>
+                )}
+                {/* Add value inline form */}
+                {showAddValue ? (
+                  <div className="flex flex-col gap-2 p-3 border rounded-lg bg-muted/30">
+                    <Input
+                      placeholder="Enter value statement..."
+                      value={newValueContent}
+                      onChange={(e) => setNewValueContent(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && newValueContent.trim()) createValueMutation.mutate(newValueContent); }}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={!newValueContent.trim() || createValueMutation.isPending}
+                        onClick={() => createValueMutation.mutate(newValueContent)}
+                      >
+                        {createValueMutation.isPending ? <Spinner className="size-3 mr-1" /> : null}Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setNewValueContent(""); setShowAddValue(false); }}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => setShowAddValue(true)}
+                  >
+                    <Plus className="size-3 mr-1" />
+                    Add value
+                  </Button>
+                )}
               </div>
             </AccordionContent>
           </AccordionItem>
