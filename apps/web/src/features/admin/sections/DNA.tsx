@@ -495,6 +495,15 @@ function TopicItem({ topic, onSuggestionAction }: { topic: DnaTopic; onSuggestio
           </>
         )}
       </AccordionTrigger>
+      {deleteError && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive mx-1 mt-1">
+          <AlertCircle className="size-4 shrink-0" />
+          <span className="flex-1">{deleteError}</span>
+          <Button variant="ghost" size="icon" className="size-5 shrink-0 text-destructive hover:text-destructive" onClick={() => setDeleteError(null)}>
+            <X className="size-3" />
+          </Button>
+        </div>
+      )}
       <AccordionContent>
         <div className="space-y-3 pt-1">
           {deleteError && (
