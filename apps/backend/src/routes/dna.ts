@@ -403,6 +403,161 @@ ${context}`,
 });
 
 /**
+ * POST /dna/subtopics/:id/generate
+ * Generate DNA value statements using broader context: org DNA + available embeddings + general knowledge.
+ * Used as a fallback when synthesis fails due to no relevant document content.
+ */
+dnaRouter.post('/subtopics/:id/generate', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+
+  const [subtopic] = await db
+    .select()
+    .from(dnaSubtopics)
+    .where(and(eq(dnaSubtopics.id, id), eq(dnaSubtopics.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!subtopic) {
+    return c.json({ error: 'Subtopic not found.' }, 404);
+  }
+
+  // Fetch parent topic for context
+  const [topic] = await db
+    .select()
+    .from(dnaTopics)
+    .where(eq(dnaTopics.id, subtopic.topicId))
+    .limit(1);
+
+  // Query ChromaDB for any relevant chunks (don't fail if empty)
+  const queryText = `${topic?.name ?? ''} ${subtopic.name}`.trim();
+  const queryResult = await queryDocuments(queryText, auth.organizationId, 10);
+  const chunks = queryResult.documents.filter((d): d is string => d !== null && d.length > 0);
+
+  // Fetch all approved DNA values from the org for organizational context
+  const approvedValues = await db
+    .select({ content: dnaValues.content })
+    .from(dnaValues)
+    .where(and(eq(dnaValues.organizationId, auth.organizationId), eq(dnaValues.approval, 'approved')));
+
+  // Mark as running
+  await db
+    .update(dnaSubtopics)
+    .set({ synthesisStatus: 'running' })
+    .where(eq(dnaSubtopics.id, id));
+
+  try {
+
+    const dnaContext = approvedValues.length > 0
+      ? approvedValues.map((v) => `- ${v.content}`).join('\n')
+      : null;
+
+    const documentContext = chunks.length > 0
+      ? chunks.join('\n\n---\n\n')
+      : null;
+
+    const { text } = await generateText({
+      model: openai('gpt-4o'),
+      prompt: `You are helping define an organization's learning DNA.
+
+Topic: ${topic?.name ?? ''}
+Subtopic: ${subtopic.name}
+${subtopic.description ? `Description: ${subtopic.description}` : ''}
+
+Your task is to generate value statements about this subtopic for this organization. Use all available context below, and supplement with your general knowledge about this domain where needed.
+
+${dnaContext ? `Organizational DNA (approved knowledge from other subtopics):\n${dnaContext}\n` : ''}
+${documentContext ? `Document excerpts:\n${documentContext}\n` : ''}
+
+Generate ${env.DNA_SYNTHESIS_MIN_VALUES} to ${env.DNA_SYNTHESIS_MAX_VALUES} value statements that capture the core principles, beliefs, and important context related to this subtopic. Each statement should be self-contained and preserve enough detail to be useful when fed into other prompts. Each statement should be on its own line, starting with a dash (-). Do not number them. Keep each statement under ${env.DNA_SYNTHESIS_MAX_WORDS_PER_VALUE} words.`,
+    });
+
+    // Parse lines starting with "-"
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith('-'))
+      .map((l) => l.replace(/^-\s*/, '').trim())
+      .filter((l) => l.length > 0);
+
+    if (lines.length === 0) {
+      await db.update(dnaSubtopics).set({ synthesisStatus: 'failed' }).where(eq(dnaSubtopics.id, id));
+      return c.json({ error: 'Could not generate any values. Please try again.' }, 422);
+    }
+
+    // Delete non-approved values, preserving any previously approved ones
+    await db.delete(dnaValues).where(and(eq(dnaValues.subtopicId, id), ne(dnaValues.approval, 'approved')));
+
+    await db.insert(dnaValues).values(
+      lines.map((content) => ({
+        subtopicId: id,
+        organizationId: auth.organizationId,
+        content,
+        approval: 'pending' as const,
+      }))
+    );
+
+    // Mark as done
+    await db
+      .update(dnaSubtopics)
+      .set({ synthesisStatus: 'done', lastSynthesizedAt: new Date() })
+      .where(eq(dnaSubtopics.id, id));
+
+    logger.info({ subtopicId: id, valueCount: lines.length }, 'DNA generate complete.');
+
+    return c.json({ success: true, valueCount: lines.length });
+
+  } catch (err) {
+
+    await db
+      .update(dnaSubtopics)
+      .set({ synthesisStatus: 'failed' })
+      .where(eq(dnaSubtopics.id, id));
+
+    logger.error({ err, subtopicId: id }, 'DNA generate failed.');
+
+    return c.json({ error: 'Generation failed. Please try again.' }, 500);
+  }
+});
+
+/**
+ * POST /dna/subtopics/:id/values
+ * Manually create a DNA value for a subtopic (admin-entered, auto-approved).
+ */
+dnaRouter.post('/subtopics/:id/values', requireRole('admin'), async (c) => {
+
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+  const body = await c.req.json<{ content: string }>();
+
+  if (!body.content?.trim()) {
+    return c.json({ error: 'Content is required.' }, 400);
+  }
+
+  const [subtopic] = await db
+    .select()
+    .from(dnaSubtopics)
+    .where(and(eq(dnaSubtopics.id, id), eq(dnaSubtopics.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!subtopic) {
+    return c.json({ error: 'Subtopic not found.' }, 404);
+  }
+
+  const [value] = await db.insert(dnaValues).values({
+    subtopicId: id,
+    organizationId: auth.organizationId,
+    content: body.content.trim(),
+    approval: 'approved',
+    userEdited: true,
+  }).returning();
+
+  logger.info({ valueId: value.id, subtopicId: id, organizationId: auth.organizationId }, 'DNA value manually created.');
+
+  return c.json({ value }, 201);
+});
+
+/**
  * PATCH /dna/values/:id/content
  * Update the content of a DNA value (marks it as user-edited).
  */
