@@ -443,6 +443,15 @@ export const api = {
       request<{ success: boolean; valueCount: number }>(`/dna/subtopics/${subtopicId}/synthesize`, {
         method: "POST",
       }),
+    generate: (subtopicId: string) =>
+      request<{ success: boolean; valueCount: number }>(`/dna/subtopics/${subtopicId}/generate`, {
+        method: "POST",
+      }),
+    createValue: (subtopicId: string, content: string) =>
+      request<{ value: DnaValue }>(`/dna/subtopics/${subtopicId}/values`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }),
     updateValueApproval: (id: string, approval: "approved" | "rejected") =>
       request<{ value: DnaValue }>(`/dna/values/${id}/approval`, {
         method: "PATCH",
