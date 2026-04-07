@@ -3,13 +3,16 @@
 import { useCallback, useRef, useState } from "react";
 import { TTS_ENDPOINT } from "../constants";
 
-export type TTSState = "idle" | "loading" | "playing" | "error";
+export type TTSState = "idle" | "loading" | "playing" | "paused" | "error";
 
 export interface UseTTSReturn {
   state: TTSState;
   isSpeaking: boolean;
+  isPaused: boolean;
   speak: (text: string, voiceId?: string) => Promise<void>;
   stop: () => void;
+  pause: () => void;
+  resume: () => void;
 }
 
 function getToken(): string | null {
@@ -39,6 +42,20 @@ export function useTTS(): UseTTSReturn {
     cleanup();
     setState("idle");
   }, [cleanup]);
+
+  const pause = useCallback(() => {
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
+      setState("paused");
+    }
+  }, []);
+
+  const resume = useCallback(() => {
+    if (audioRef.current && audioRef.current.paused && blobUrlRef.current) {
+      audioRef.current.play();
+      setState("playing");
+    }
+  }, []);
 
   const speak = useCallback(async (text: string, voiceId?: string) => {
 
@@ -91,5 +108,5 @@ export function useTTS(): UseTTSReturn {
 
   }, [stop, cleanup]);
 
-  return { state, isSpeaking: state === "playing", speak, stop };
+  return { state, isSpeaking: state === "playing", isPaused: state === "paused", speak, stop, pause, resume };
 }

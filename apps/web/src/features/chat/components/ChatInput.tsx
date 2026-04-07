@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent } from "react";
-import { Send, Mic, MicOff, Loader2, Square } from "lucide-react";
+import { Send, Mic, MicOff, Loader2, Square, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { VoiceInputState } from "../hooks/useVoiceInput";
@@ -18,6 +18,9 @@ interface ChatInputProps {
   stopListening: () => void;
   // Voice mode controls
   isSpeaking: boolean;
+  isPaused: boolean;
+  onPauseSpeech: () => void;
+  onResumeSpeech: () => void;
   voicePaused: boolean;
   onStopVoice: () => void;
   onStartVoice: () => void;
@@ -34,6 +37,9 @@ export function ChatInput({
   startListening,
   stopListening,
   isSpeaking,
+  isPaused,
+  onPauseSpeech,
+  onResumeSpeech,
   voicePaused,
   onStopVoice,
   onStartVoice,
@@ -53,7 +59,9 @@ export function ChatInput({
     const loopRunning = !voicePaused;
     const isProcessing = voiceState === "transcribing" || isLoading;
 
-    const statusText = isSpeaking
+    const statusText = isPaused
+      ? "Paused"
+      : isSpeaking
       ? "Speaking..."
       : voiceState === "recording"
       ? "Listening..."
@@ -67,23 +75,41 @@ export function ChatInput({
       <div className="shrink-0 border-t bg-background px-4 py-6">
         <div className="flex flex-col items-center gap-3">
           <p className="text-sm text-muted-foreground">{statusText}</p>
-          <Button
-            type="button"
-            size="icon"
-            variant={loopRunning ? "destructive" : "default"}
-            className="h-16 w-16 rounded-full"
-            onClick={loopRunning ? onStopVoice : onStartVoice}
-            disabled={isProcessing}
-            aria-label={loopRunning ? "Stop" : "Start speaking"}
-          >
-            {isProcessing ? (
-              <Loader2 className="size-6 animate-spin" />
-            ) : loopRunning ? (
-              <Square className="size-6 fill-current" />
-            ) : (
-              <Mic className="size-6" />
+          <div className="flex items-center gap-3">
+            {(isSpeaking || isPaused) && (
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="h-12 w-12 rounded-full"
+                onClick={isPaused ? onResumeSpeech : onPauseSpeech}
+                aria-label={isPaused ? "Resume speech" : "Pause speech"}
+              >
+                {isPaused ? (
+                  <Play className="size-5" />
+                ) : (
+                  <Pause className="size-5" />
+                )}
+              </Button>
             )}
-          </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant={loopRunning ? "destructive" : "default"}
+              className="h-16 w-16 rounded-full"
+              onClick={loopRunning ? onStopVoice : onStartVoice}
+              disabled={isProcessing}
+              aria-label={loopRunning ? "Stop" : "Start speaking"}
+            >
+              {isProcessing ? (
+                <Loader2 className="size-6 animate-spin" />
+              ) : loopRunning ? (
+                <Square className="size-6 fill-current" />
+              ) : (
+                <Mic className="size-6" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -93,6 +119,22 @@ export function ChatInput({
   return (
     <div className="shrink-0 border-t bg-background px-3 py-2 sm:px-4 sm:py-3">
       <div className="flex items-center gap-1.5 sm:gap-2">
+        {(isSpeaking || isPaused) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 h-10 w-10"
+            onClick={isPaused ? onResumeSpeech : onPauseSpeech}
+            aria-label={isPaused ? "Resume speech" : "Pause speech"}
+          >
+            {isPaused ? (
+              <Play className="size-4 sm:size-5" />
+            ) : (
+              <Pause className="size-4 sm:size-5" />
+            )}
+          </Button>
+        )}
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}

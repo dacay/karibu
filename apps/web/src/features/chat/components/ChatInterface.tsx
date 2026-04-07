@@ -45,7 +45,7 @@ export function ChatInterface({
   const [voicePaused, setVoicePaused] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
-  const { speak, stop, isSpeaking } = useTTS();
+  const { speak, stop, pause, resume, isSpeaking, isPaused } = useTTS();
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
   const { messages, sendMessage, status } = useChat({
@@ -204,15 +204,17 @@ export function ChatInterface({
       <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
         <ChatAgentAvatar
           avatar={resolvedAvatar}
-          isSpeaking={isSpeaking}
+          isSpeaking={isSpeaking || isPaused}
           size="md"
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
             {resolvedAvatar.name ?? "Assistant"}
           </p>
-          {isSpeaking && (
-            <p className="text-xs text-muted-foreground">Speaking...</p>
+          {(isSpeaking || isPaused) && (
+            <p className="text-xs text-muted-foreground">
+              {isPaused ? "Paused" : "Speaking..."}
+            </p>
           )}
         </div>
         {isCompleted && (
@@ -265,6 +267,9 @@ export function ChatInterface({
         startListening={startListening}
         stopListening={stopListening}
         isSpeaking={isSpeaking}
+        isPaused={isPaused}
+        onPauseSpeech={pause}
+        onResumeSpeech={resume}
         voicePaused={voicePaused}
         onStopVoice={handleStopVoice}
         onStartVoice={handleStartVoice}
