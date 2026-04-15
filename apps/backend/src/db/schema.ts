@@ -96,6 +96,7 @@ export const microlearnings = pgTable('microlearnings', {
   avatarId: uuid('avatar_id').references(() => avatars.id, { onDelete: 'set null' }),
   sequenceId: uuid('sequence_id').references(() => microlearningSequences.id, { onDelete: 'set null' }),
   position: integer('position'),
+  imageS3Key: text('image_s3_key'),
   ...timestamps,
 });
 

@@ -41,6 +41,8 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DEEPGRAM_API_KEY: z.string().min(1).optional(),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_IMAGE_MODEL: z.string().default('gemini-2.5-flash-image'),
 
   // AWS S3
   AWS_REGION: z.string().min(1).optional(),

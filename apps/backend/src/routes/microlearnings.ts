@@ -15,6 +15,7 @@ import {
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { broadcastFeedUpdate } from './learner-sse.js';
+import { generateMlImage } from '../services/ml-image-generator.js';
 
 const microlearningsRouter = new Hono();
 
@@ -484,6 +485,11 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
     .returning();
 
   logger.info({ microlearningId: ml.id, organizationId: auth.organizationId }, 'Microlearning created.');
+
+  // Fire-and-forget: generate a cover image for the ML
+  generateMlImage(ml.id).catch((err) => {
+    logger.error({ err, microlearningId: ml.id }, 'Background ML image generation failed.');
+  });
 
   return c.json({ microlearning: ml }, 201);
 })

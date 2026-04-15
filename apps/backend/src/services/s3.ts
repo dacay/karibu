@@ -184,6 +184,17 @@ export const buildOrgLogoKey = (subdomain: string, variant: LogoVariant): string
 }
 
 /**
+ * Build the S3 key for a microlearning cover image.
+ * Pattern: {prefix}/{subdomain}/ml-images/{mlId}.png
+ */
+export const buildMlImageKey = (subdomain: string, mlId: string): string => {
+
+  const prefix = env.S3_ASSETS_KEY_PREFIX ? `${env.S3_ASSETS_KEY_PREFIX}/` : '';
+
+  return `${prefix}${subdomain}/ml-images/${mlId}.png`;
+}
+
+/**
  * Invalidate one or more CloudFront paths so updated assets are served immediately.
  * S3 keys are converted to CloudFront paths by prepending a leading slash.
  * No-ops silently when CLOUDFRONT_DISTRIBUTION_ID is not configured.
