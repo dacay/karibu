@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AccountMenu } from "@/components/AccountMenu";
 import { KaribuFooter } from "@/components/KaribuFooter";
+import { getAssetUrl } from "@/lib/assets";
 import { api, getApiBaseUrl, getToken, DEFAULT_INACTIVITY_WINDOW_MS, type LearnerFeedML } from "@/lib/api";
 
 // ─── Active ML card ─────────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
   const isCompleted = ml.progress?.status === "completed";
   const isSequence = !!ml.sequenceName;
   const isNew = isSequence && ml.progress === null;
+  const imageUrl = ml.imageS3Key ? getAssetUrl(ml.imageS3Key) : null;
+
   const glowColor = resolvedTheme === "dark"
     ? "rgba(34, 197, 94, 0.45)"
     : "rgba(22, 163, 74, 0.35)";
@@ -47,25 +50,73 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
     <button
       type="button"
       onClick={() => router.push(`/ml/${ml.id}`)}
-      className="flex items-center gap-4 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer"
-      style={isNew ? { boxShadow: `0 0 10px 2px ${glowColor}` } : undefined}
+      className="group relative flex flex-col justify-end overflow-hidden rounded-2xl border bg-card text-left transition-all hover:scale-[1.02] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer"
+      style={{
+        aspectRatio: "3/4",
+        ...(isNew ? { boxShadow: `0 0 14px 3px ${glowColor}` } : {}),
+      }}
     >
-      <div className="flex-1 min-w-0">
-        {ml.sequenceName && (
-          <p className="text-xs text-muted-foreground mb-0.5 truncate">{ml.sequenceName}</p>
-        )}
-        <p className="text-sm font-medium truncate">{ml.title}</p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Full-bleed background image */}
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt=""
+          fill
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          unoptimized
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-muted to-muted-foreground/20" />
+      )}
+
+      {/* Status badges — top-right */}
+      <div className="absolute top-3 right-3 flex items-center gap-1.5">
         {isCompleted && (
-          <CheckCircle2 className="size-4 text-green-500" />
+          <Badge className="gap-1 bg-green-600/90 text-white border-0 text-xs backdrop-blur-sm">
+            <CheckCircle2 className="size-3" />
+            Completed
+          </Badge>
         )}
         {isInProgress && (
-          <Badge variant="outline" className="gap-1 text-xs">
+          <Badge className="gap-1 bg-black/40 text-white border-0 text-xs backdrop-blur-sm">
             In progress
           </Badge>
         )}
-        <ChevronRight className="size-4 text-muted-foreground" />
+      </div>
+
+      {/* Fading blur — covers bottom half, fades into image above */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-[52%] backdrop-blur-xl"
+        style={{ maskImage: "linear-gradient(to top, black 20%, transparent 80%)" }}
+      />
+      {/* Dark gradient overlay for text legibility */}
+      <div className="absolute inset-x-0 bottom-0 h-[52%] bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+      {/* Content overlaid on gradient */}
+      <div className="relative z-10 flex flex-col gap-2 p-4">
+        {/* Title */}
+        <h3 className="text-base font-semibold leading-snug line-clamp-2 text-white">
+          {ml.title}
+        </h3>
+
+        {/* Topic · Sequence — secondary context */}
+        {(ml.topic || ml.sequenceName) && (
+          <p className="text-xs text-white/60 truncate">
+            {[ml.topic?.name, ml.sequenceName].filter(Boolean).join(" · ")}
+          </p>
+        )}
+
+        {/* CTA button */}
+        <div
+          className={`mt-1 w-full rounded-full py-2.5 text-center text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 ${
+            isCompleted
+              ? "bg-white/20 text-white backdrop-blur-sm hover:bg-white/30"
+              : "bg-white text-black hover:bg-white/90"
+          }`}
+        >
+          {isCompleted && <CheckCircle2 className="size-3.5" />}
+          {isCompleted ? "Review" : isInProgress ? "Continue" : "Start"}
+        </div>
       </div>
     </button>
   );
@@ -76,30 +127,50 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
 function ArchiveMLCard({ ml }: { ml: LearnerFeedML }) {
   const router = useRouter();
   const isCompleted = ml.progress?.status === "completed";
+  const imageUrl = ml.imageS3Key ? getAssetUrl(ml.imageS3Key) : null;
 
   return (
     <button
       type="button"
       onClick={() => router.push(`/ml/${ml.id}`)}
-      className="flex items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer"
+      className="group relative flex flex-col justify-end overflow-hidden rounded-2xl border bg-card text-left transition-all hover:scale-[1.02] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer opacity-70 hover:opacity-100"
+      style={{ aspectRatio: "3/4" }}
     >
-      <div className="flex-1 min-w-0">
-        {ml.sequenceName && (
-          <p className="text-xs text-muted-foreground truncate">{ml.sequenceName}</p>
-        )}
-        <p className="text-sm text-muted-foreground truncate">{ml.title}</p>
-      </div>
-      {isCompleted ? (
-        <Badge variant="outline" className="gap-1 border-green-500 text-green-600 shrink-0 text-xs">
-          <CheckCircle2 className="size-3" />
-          Done
-        </Badge>
+      {/* Full-bleed background image */}
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt=""
+          fill
+          className="object-cover grayscale transition-all duration-300 group-hover:grayscale-0"
+          unoptimized
+        />
       ) : (
-        <Badge variant="outline" className="gap-1 shrink-0 text-xs text-muted-foreground">
-          <Clock className="size-3" />
-          Expired
-        </Badge>
+        <div className="absolute inset-0 bg-gradient-to-br from-muted to-muted-foreground/20" />
       )}
+
+      {/* Fading blur */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-[52%] backdrop-blur-xl"
+        style={{ maskImage: "linear-gradient(to top, black 20%, transparent 80%)" }}
+      />
+      {/* Dark gradient overlay */}
+      <div className="absolute inset-x-0 bottom-0 h-[52%] bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+      {/* Content */}
+      <div className="relative z-10 flex flex-col gap-2 p-4">
+        <h3 className="text-base font-semibold leading-snug line-clamp-2 text-white">{ml.title}</h3>
+        {(ml.topic || ml.sequenceName) && (
+          <p className="text-xs text-white/60 truncate">
+            {[ml.topic?.name, ml.sequenceName].filter(Boolean).join(" · ")}
+          </p>
+        )}
+
+        <div className="mt-1 w-full rounded-full py-2 text-center text-sm font-semibold flex items-center justify-center gap-1.5 bg-white/20 text-white backdrop-blur-sm">
+          {isCompleted ? <CheckCircle2 className="size-3.5" /> : <Clock className="size-3.5" />}
+          {isCompleted ? "Review" : "Expired"}
+        </div>
+      </div>
     </button>
   );
 }
@@ -112,15 +183,40 @@ function AskMeAnythingCard() {
     <button
       type="button"
       onClick={() => router.push("/chat")}
-      className="flex items-center gap-4 rounded-lg border border-dashed bg-muted/40 p-4 text-left transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer"
+      className="group relative flex flex-col justify-end overflow-hidden rounded-2xl border border-dashed bg-card text-left transition-all hover:scale-[1.02] hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-full cursor-pointer"
+      style={{ aspectRatio: "3/4" }}
     >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">Ask me anything</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+      {/* Tool background — solid dark gradient (no image) */}
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950" />
+
+      {/* Centered tool icon in the upper portion */}
+      <div className="absolute inset-x-0 top-0 bottom-[40%] flex items-center justify-center">
+        <MessageCircle
+          className="size-20 text-white/30 transition-transform duration-300 group-hover:scale-110"
+          strokeWidth={1.5}
+        />
+      </div>
+
+      {/* Fading blur to match ML cards */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-[52%] backdrop-blur-xl"
+        style={{ maskImage: "linear-gradient(to top, black 20%, transparent 80%)" }}
+      />
+      {/* Dark gradient overlay */}
+      <div className="absolute inset-x-0 bottom-0 h-[52%] bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+      {/* Content */}
+      <div className="relative z-10 flex flex-col gap-2 p-4">
+        <h3 className="text-base font-semibold leading-snug line-clamp-2 text-white">
+          Ask me anything
+        </h3>
+        <p className="text-xs text-white/60 truncate">
           Have a question? Start a free conversation.
         </p>
+        <div className="mt-1 w-full rounded-full py-2.5 text-center text-sm font-semibold transition-colors flex items-center justify-center gap-1.5 bg-white/20 text-white backdrop-blur-sm hover:bg-white/30">
+          Ask anything
+        </div>
       </div>
-      <MessageCircle className="size-4 text-blue-500 shrink-0" />
     </button>
   );
 }
@@ -229,7 +325,7 @@ export function LearnerRoot() {
           </div>
         ) : isEmpty ? (
           /* ── Empty state ──────────────────────────────────────────────── */
-          <div className="flex flex-col gap-4 max-w-2xl">
+          <div className="flex flex-col gap-6">
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
               <BookOpen className="size-8 text-muted-foreground mb-3" />
               <p className="text-sm font-medium">No microlearnings assigned</p>
@@ -237,20 +333,19 @@ export function LearnerRoot() {
                 Your administrator will assign learning content here.
               </p>
             </div>
-            <AskMeAnythingCard />
+            <div className="grid gap-6 grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
+              <AskMeAnythingCard />
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-8 max-w-2xl">
-            {/* ── Active MLs + Ask me anything ──────────────────────────── */}
-            {(active.length > 0) && (
-              <div className="flex flex-col gap-4">
-                {active.map((ml) => (
-                  <ActiveMLCard key={ml.id} ml={ml} />
-                ))}
-              </div>
-            )}
-
-            <AskMeAnythingCard />
+          <div className="flex flex-col gap-8">
+            {/* ── Active MLs + Ask me anything (last cell) ───────────────── */}
+            <div className="grid gap-6 grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
+              {active.map((ml) => (
+                <ActiveMLCard key={ml.id} ml={ml} />
+              ))}
+              <AskMeAnythingCard />
+            </div>
 
             {/* ── Archive ────────────────────────────────────────────────── */}
             {archive.length > 0 && (
@@ -262,7 +357,7 @@ export function LearnerRoot() {
                       <span>Archive&nbsp;<span className="text-xs font-normal">({archive.length})</span></span>
                     </AccordionTrigger>
                     <AccordionContent>
-                      <div className="flex flex-col gap-1 pt-1">
+                      <div className="grid gap-6 pt-2 grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
                         {archive.map((ml) => (
                           <ArchiveMLCard key={ml.id} ml={ml} />
                         ))}

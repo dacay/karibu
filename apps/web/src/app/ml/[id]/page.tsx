@@ -2,31 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Sun, Moon, Monitor, ChevronDown, ArrowLeft, CheckCircle2,
-} from "lucide-react";
-import { useTheme } from "next-themes";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfetti } from "@/hooks/useConfetti";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
-} from "@/components/ui/dropdown-menu";
+import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
 import { api, type Avatar as AvatarType } from "@/lib/api";
@@ -47,27 +30,11 @@ function buildChatAvatar(avatar: AvatarType | null): ChatAvatar | undefined {
   };
 }
 
-function getInitials(email: string): string {
-  const [local] = email.split("@");
-  const parts = local.split(/[._-]/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return local.slice(0, 2).toUpperCase();
-}
-
-const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementType }[] = [
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon },
-  { value: "system", label: "System", icon: Monitor },
-];
-
 export default function MicrolearningChatPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isLoading: authLoading, logout } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
   // Admin test mode: opened via the Test button in the admin view
@@ -134,15 +101,6 @@ export default function MicrolearningChatPage() {
     enabled: !!user && user.role !== "admin",
   });
 
-  // Mutation to update avatar preference
-  const updatePreferenceMutation = useMutation({
-    mutationFn: (preferredAvatarId: string | null) =>
-      api.user.updatePreferences({ preferredAvatarId }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
-    },
-  });
-
   // Sync completed state from existing progress
   useEffect(() => {
     if (mlData?.progress?.status === "completed") {
@@ -193,8 +151,6 @@ export default function MicrolearningChatPage() {
     queryClient.invalidateQueries({ queryKey: ["chat", "ml", id] });
   }, [queryClient, id, fireConfetti]);
 
-  const initials = user?.email ? getInitials(user.email) : "?";
-
   if (authLoading || mlLoading || sessionLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -241,78 +197,7 @@ export default function MicrolearningChatPage() {
           </div>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 h-9 px-2">
-              <Avatar className="size-7">
-                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-              </Avatar>
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col gap-0.5">
-                <p className="text-sm font-medium">My Account</p>
-                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            {/* Avatar preference — only for learners */}
-            {user.role !== "admin" && avatarsData?.avatars && avatarsData.avatars.length > 0 && (
-              <>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="cursor-pointer">
-                    <span>Chat Avatar</span>
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuPortal>
-                    <DropdownMenuSubContent className="w-52">
-                      <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                        Override the default avatar
-                      </DropdownMenuLabel>
-                      <DropdownMenuRadioGroup
-                        value={profileData?.user.preferredAvatarId ?? "default"}
-                        onValueChange={(val) =>
-                          updatePreferenceMutation.mutate(val === "default" ? null : val)
-                        }
-                      >
-                        <DropdownMenuRadioItem value="default" className="cursor-pointer">
-                          Use default
-                        </DropdownMenuRadioItem>
-                        {avatarsData.avatars.map((a) => (
-                          <DropdownMenuRadioItem key={a.id} value={a.id} className="cursor-pointer">
-                            {a.name}
-                          </DropdownMenuRadioItem>
-                        ))}
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuPortal>
-                </DropdownMenuSub>
-                <DropdownMenuSeparator />
-              </>
-            )}
-
-            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
-              Appearance
-            </DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={setTheme}>
-              {APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => (
-                <DropdownMenuRadioItem key={value} value={value} className="cursor-pointer">
-                  <Icon className="size-3.5 mr-2" />
-                  {label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer text-destructive focus:text-destructive"
-              onClick={logout}
-            >
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <AccountMenu />
       </header>
 
       {/* Chat interface fills remaining height */}

@@ -2,6 +2,7 @@
 
 import { useState, useRef, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Image from "next/image";
 import {
   BookOpen,
   Plus,
@@ -19,7 +20,10 @@ import {
   MessageSquare,
   UserRound,
   FlaskConical,
+  ImageIcon,
+  Sparkles,
 } from "lucide-react";
+import { getAssetUrl } from "@/lib/assets";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -39,6 +43,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   api,
   type Microlearning,
@@ -381,6 +391,9 @@ interface MlRowProps {
   isTogglingStatus: boolean;
   onDelete: () => void;
   isDeleting: boolean;
+  onRegenerateImage: () => void;
+  isRegeneratingImage: boolean;
+  imageVersion?: number;
 }
 
 function MlRow({
@@ -408,6 +421,9 @@ function MlRow({
   isTogglingStatus,
   onDelete,
   isDeleting,
+  onRegenerateImage,
+  isRegeneratingImage,
+  imageVersion,
 }: MlRowProps) {
   const isEditing = editingMlId === ml.id;
   const meta = metaParts(ml, topics, patterns, avatars);
@@ -461,6 +477,47 @@ function MlRow({
         ? <Spinner className="size-4 shrink-0 text-muted-foreground" />
         : <GripVertical className="size-4 shrink-0 text-muted-foreground/40 cursor-grab active:cursor-grabbing hover:text-muted-foreground transition-colors" />
       }
+
+      {/* Cover image thumbnail (3:4) — click to preview */}
+      {ml.imageS3Key && !isRegeneratingImage ? (
+        <Dialog>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="relative shrink-0 w-10 h-[3.5rem] rounded overflow-hidden bg-muted cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:ring-2 hover:ring-ring/50 transition-all"
+              aria-label="View cover image"
+            >
+              <Image
+                src={`${getAssetUrl(ml.imageS3Key)}${imageVersion ? `?v=${imageVersion}` : ""}`}
+                alt=""
+                fill
+                sizes="40px"
+                className="object-cover"
+                unoptimized
+              />
+            </button>
+          </DialogTrigger>
+          <DialogContent className="max-w-xl p-0 overflow-hidden">
+            <DialogTitle className="sr-only">{ml.title} cover image</DialogTitle>
+            <div className="relative w-full bg-muted" style={{ aspectRatio: "3/4" }}>
+              <Image
+                src={`${getAssetUrl(ml.imageS3Key)}${imageVersion ? `?v=${imageVersion}` : ""}`}
+                alt={ml.title}
+                fill
+                sizes="(max-width: 768px) 100vw, 576px"
+                className="object-cover"
+                unoptimized
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <div className="relative shrink-0 w-10 h-[3.5rem] rounded overflow-hidden bg-muted flex items-center justify-center">
+          {isRegeneratingImage
+            ? <Spinner className="size-4 text-muted-foreground" />
+            : <ImageIcon className="size-4 text-muted-foreground/50" />}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-1.5">
@@ -546,6 +603,10 @@ function MlRow({
             <Pencil className="size-3.5 mr-2" />
             Edit
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={onRegenerateImage} disabled={isRegeneratingImage}>
+            <Sparkles className="size-3.5 mr-2" />
+            {isRegeneratingImage ? "Regenerating…" : "Regenerate image"}
+          </DropdownMenuItem>
           {onRemoveFromSequence && (
             <DropdownMenuItem onClick={onRemoveFromSequence}>
               <X className="size-3.5 mr-2" />
@@ -584,9 +645,18 @@ export function MicrolearningsSection() {
   const [draggingMlId, setDraggingMlId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ groupId: string; beforeIndex: number } | null>(null);
 
+  // Cover image regeneration: track in-flight IDs to drive polling, and per-ML
+  // version timestamps to bust the image cache (S3 key is stable across regens).
+  const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
+  const [imageVersions, setImageVersions] = useState<Map<string, number>>(new Map());
+
   // ── Queries ────────────────────────────────────────────────────────────────
 
-  const mlQuery = useQuery({ queryKey: ["microlearnings"], queryFn: () => api.microlearnings.list() });
+  const mlQuery = useQuery({
+    queryKey: ["microlearnings"],
+    queryFn: () => api.microlearnings.list(),
+    refetchInterval: regeneratingIds.size > 0 ? 5_000 : false,
+  });
   const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.sequences.list() });
   const dnaQuery = useQuery({ queryKey: ["dna"], queryFn: () => api.dna.list() });
   const patternsQuery = useQuery({ queryKey: ["patterns"], queryFn: () => api.patterns.list() });
@@ -658,6 +728,23 @@ export function MicrolearningsSection() {
     mutationFn: ({ id, status }: { id: string; status: "draft" | "published" }) =>
       api.microlearnings.update(id, { status }),
     onSuccess: () => invalidate(),
+  });
+
+  const regenerateImageMutation = useMutation({
+    mutationFn: (id: string) => api.microlearnings.regenerateImage(id),
+    onMutate: (id) => {
+      setRegeneratingIds((prev) => new Set(prev).add(id));
+      // Gemini typically finishes within ~25s — stop polling and bust the
+      // image cache at that point so the browser fetches the new object.
+      setTimeout(() => {
+        setRegeneratingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        setImageVersions((prev) => new Map(prev).set(id, Date.now()));
+      }, 25_000);
+    },
   });
 
   const moveMutation = useMutation({
@@ -951,6 +1038,9 @@ export function MicrolearningsSection() {
                         isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
                         onDelete={() => deleteMlMutation.mutate(ml.id)}
                         isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
+                        onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
+                        isRegeneratingImage={regeneratingIds.has(ml.id)}
+                        imageVersion={imageVersions.get(ml.id)}
                       />
                     </Fragment>
                   ))}
@@ -1032,6 +1122,8 @@ export function MicrolearningsSection() {
                     isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
                     onDelete={() => deleteMlMutation.mutate(ml.id)}
                     isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
+                    onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
+                    isRegeneratingImage={regenerateImageMutation.isPending && regenerateImageMutation.variables === ml.id}
                   />
                 </Fragment>
               ))}

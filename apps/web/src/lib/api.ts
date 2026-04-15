@@ -183,6 +183,7 @@ export interface Microlearning {
   avatarId: string | null;
   sequenceId: string | null;
   position: number | null;
+  imageS3Key: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -525,6 +526,8 @@ export const api = {
       }),
     delete: (id: string) =>
       request<{ success: boolean }>(`/microlearnings/${id}`, { method: "DELETE" }),
+    regenerateImage: (id: string) =>
+      request<{ success: boolean }>(`/microlearnings/${id}/regenerate-image`, { method: "POST" }),
     // User-facing endpoints
     myMicrolearnings: () =>
       request<{ microlearnings: MicrolearningWithDetails[] }>("/microlearnings/my"),
