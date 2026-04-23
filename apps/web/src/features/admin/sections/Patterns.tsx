@@ -25,7 +25,8 @@ interface PatternFormProps {
   initialName?: string;
   initialDescription?: string;
   initialPrompt?: string;
-  onSave: (values: { name: string; description: string; prompt: string }) => void;
+  initialMultipleChoiceEnabled?: boolean;
+  onSave: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) => void;
   onCancel: () => void;
   isLoading: boolean;
   submitLabel?: string;
@@ -37,6 +38,7 @@ function PatternForm({
   initialName = "",
   initialDescription = "",
   initialPrompt = "",
+  initialMultipleChoiceEnabled = false,
   onSave,
   onCancel,
   isLoading,
@@ -45,6 +47,7 @@ function PatternForm({
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [prompt, setPrompt] = useState(initialPrompt);
+  const [multipleChoiceEnabled, setMultipleChoiceEnabled] = useState(initialMultipleChoiceEnabled);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reset form when dialog opens with new initial values
@@ -53,6 +56,7 @@ function PatternForm({
       setName(initialName);
       setDescription(initialDescription);
       setPrompt(initialPrompt);
+      setMultipleChoiceEnabled(initialMultipleChoiceEnabled);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -99,8 +103,26 @@ function PatternForm({
             className="w-full resize-none overflow-y-auto rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[8rem] max-h-[24rem]"
             style={{ height: "auto" }}
           />
+          <label className="flex items-start gap-2 text-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 rounded border-input accent-primary"
+              checked={multipleChoiceEnabled}
+              onChange={(e) => setMultipleChoiceEnabled(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Allow multiple-choice options</span>
+              <span className="block text-xs text-muted-foreground">
+                When on, the AI may attach 2-4 clickable options to a question. Learners can still type a free-form answer.
+              </span>
+            </span>
+          </label>
           <div className="flex gap-2 pt-1">
-            <Button size="sm" disabled={!valid || isLoading} onClick={() => onSave({ name, description, prompt })}>
+            <Button
+              size="sm"
+              disabled={!valid || isLoading}
+              onClick={() => onSave({ name, description, prompt, multipleChoiceEnabled })}
+            >
               {isLoading ? <Spinner className="size-3 mr-1" /> : null}
               {submitLabel}
             </Button>
@@ -126,7 +148,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
   const [editing, setEditing] = useState(false);
 
   const updateMutation = useMutation({
-    mutationFn: (values: { name: string; description: string; prompt: string }) =>
+    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) =>
       api.patterns.update(pattern.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patterns"] });
@@ -147,6 +169,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
         initialName={pattern.name}
         initialDescription={pattern.description}
         initialPrompt={pattern.prompt}
+        initialMultipleChoiceEnabled={pattern.multipleChoiceEnabled}
         onSave={(values) => updateMutation.mutate(values)}
         onCancel={() => setEditing(false)}
         isLoading={updateMutation.isPending}
@@ -159,6 +182,9 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
             <CardTitle className="text-base">{pattern.name}</CardTitle>
             {pattern.isBuiltIn && (
               <Badge variant="secondary" className="text-xs">Built-in</Badge>
+            )}
+            {pattern.multipleChoiceEnabled && (
+              <Badge variant="outline" className="text-xs">Multiple choice</Badge>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -228,7 +254,7 @@ export function PatternsSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: { name: string; description: string; prompt: string }) =>
+    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) =>
       api.patterns.create(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patterns"] });
@@ -272,6 +298,7 @@ export function PatternsSection() {
         initialName={templateValues ? `${templateValues.name} (copy)` : ""}
         initialDescription={templateValues?.description ?? ""}
         initialPrompt={templateValues?.prompt ?? ""}
+        initialMultipleChoiceEnabled={templateValues?.multipleChoiceEnabled ?? false}
         onSave={(values) => createMutation.mutate(values)}
         onCancel={handleCancelCreate}
         isLoading={createMutation.isPending}

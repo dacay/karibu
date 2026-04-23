@@ -16,6 +16,8 @@ interface ChatMessageProps {
   chatId: string;
   avatar?: ChatAvatar;
   isSpeaking?: boolean;
+  isLatestAssistant?: boolean;
+  onOptionClick?: (text: string) => void;
 }
 
 type DataSource = "source" | "document" | "general";
@@ -33,10 +35,35 @@ function extractText(message: UIMessage): string {
     .join("");
 }
 
-export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: ChatMessageProps) {
+function extractOptions(message: UIMessage): string[] {
+
+  for (const part of message.parts) {
+
+    if (part.type !== "tool-offerOptions") continue;
+
+    const input = (part as { input?: { options?: unknown } }).input;
+    const options = input?.options;
+
+    if (Array.isArray(options) && options.every((o) => typeof o === "string" && o.length > 0)) {
+      return options as string[];
+    }
+  }
+
+  return [];
+}
+
+export function ChatMessage({
+  message,
+  chatId,
+  avatar,
+  isSpeaking = false,
+  isLatestAssistant = false,
+  onOptionClick,
+}: ChatMessageProps) {
 
   const isAssistant = message.role === "assistant";
   const text = extractText(message);
+  const options = isAssistant ? extractOptions(message) : [];
   const [flagged, setFlagged] = useState(false);
   const [showReason, setShowReason] = useState(false);
   const [reason, setReason] = useState("");
@@ -52,7 +79,7 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
     },
   });
 
-  if (!text) return null;
+  if (!text && options.length === 0) return null;
 
   const dataSource = (message.metadata as { dataSource?: DataSource } | undefined)?.dataSource;
   const sourceConfig = isAssistant && dataSource ? DATA_SOURCE_CONFIG[dataSource] : null;
@@ -87,6 +114,7 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
                   li: ({ children }) => <li className="mb-0.5">{children}</li>,
                   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                   em: ({ children }) => <em className="italic">{children}</em>,
+                  hr: () => <hr className="my-3 border-border" />,
                   code: ({ children }) => <code className="rounded bg-background/50 px-1 py-0.5 font-mono text-xs">{children}</code>,
                 }}
               >
@@ -96,6 +124,22 @@ export function ChatMessage({ message, chatId, avatar, isSpeaking = false }: Cha
               text
             )}
           </div>
+
+          {isAssistant && isLatestAssistant && options.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => onOptionClick?.(option)}
+                  disabled={!onOptionClick}
+                  className="rounded-full border border-primary/30 bg-background px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Reason input shown below the bubble when flag button clicked */}
           {showReason && (

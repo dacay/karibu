@@ -13,6 +13,7 @@ interface ChatMessagesProps {
   isLoading: boolean;
   avatar?: ChatAvatar;
   speakingMessageId?: string | null;
+  onOptionClick?: (text: string) => void;
 }
 
 export function ChatMessages({
@@ -21,6 +22,7 @@ export function ChatMessages({
   isLoading,
   avatar,
   speakingMessageId,
+  onOptionClick,
 }: ChatMessagesProps) {
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -28,6 +30,20 @@ export function ChatMessages({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  // Only the most recent assistant message keeps its multiple-choice chips interactive;
+  // once the learner replies, earlier chips should no longer render.
+  let latestAssistantMessageId: string | null = null;
+
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+
+    if (messages[i].role === "assistant") {
+      latestAssistantMessageId = messages[i].id;
+      break;
+    }
+
+    if (messages[i].role === "user") break;
+  }
 
   return (
     <ScrollArea className="flex-1">
@@ -44,6 +60,8 @@ export function ChatMessages({
             chatId={chatId}
             avatar={avatar}
             isSpeaking={speakingMessageId === message.id}
+            isLatestAssistant={message.id === latestAssistantMessageId}
+            onOptionClick={onOptionClick}
           />
         ))}
         {isLoading && <TypingIndicator avatar={avatar} />}

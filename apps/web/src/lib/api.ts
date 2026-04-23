@@ -133,6 +133,7 @@ export interface ConversationPattern {
   description: string;
   prompt: string;
   isBuiltIn: boolean;
+  multipleChoiceEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -481,12 +482,15 @@ export const api = {
   patterns: {
     list: () =>
       request<{ patterns: ConversationPattern[] }>("/patterns"),
-    create: (body: { name: string; description: string; prompt: string }) =>
+    create: (body: { name: string; description: string; prompt: string; multipleChoiceEnabled?: boolean }) =>
       request<{ pattern: ConversationPattern }>("/patterns", {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    update: (id: string, body: { name?: string; description?: string; prompt?: string }) =>
+    update: (
+      id: string,
+      body: { name?: string; description?: string; prompt?: string; multipleChoiceEnabled?: boolean },
+    ) =>
       request<{ pattern: ConversationPattern }>(`/patterns/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),

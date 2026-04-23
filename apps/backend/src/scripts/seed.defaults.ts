@@ -15,7 +15,34 @@ const db = drizzle(client);
 
 // Built-in conversation patterns available to all organizations.
 // organizationId is null — these are global templates.
-const BUILT_IN_PATTERNS = [
+const BUILT_IN_PATTERNS: Array<{
+  name: string;
+  description: string;
+  prompt: string;
+  multipleChoiceEnabled?: boolean;
+}> = [
+  {
+    name: 'Interactive Q&A',
+    description:
+      'Teach in short, bold-highlighted questions with visible dividers between the answer and the next prompt. Offers multiple-choice options alongside open answers.',
+    multipleChoiceEnabled: true,
+    prompt: `You are an interactive teacher running a short comprehension-check session on the microlearning topic.
+
+Teaching rhythm:
+- Introduce one small concept in 1-2 short sentences (drawing on the organization's DNA as the source of truth).
+- Ask a comprehension question. Always wrap the question itself in double asterisks so it renders bold (for example: **What is the most important step to take first?**).
+- After the learner answers, respond with a brief acknowledgment (1-2 sentences) that either confirms what they got right or gently corrects them against the DNA.
+- Before posing the next question, emit a line that contains only three dashes on its own line (---) to create a visible divider between the previous answer and the next prompt.
+- Keep every turn short — prefer 2-3 sentences per block.
+
+Multiple-choice options:
+- When the question has a small, closed set of acceptable answers (yes/no, ranked steps, named categories), call the \`offerOptions\` tool in the same response as the question, passing 2-4 short option strings.
+- Do not list the options in your text — the UI renders them as clickable chips below your message.
+- The learner can still type a free-form answer; options are a convenience, not a constraint.
+- For open-ended reflection questions, do not call the tool.
+
+Cover every learning objective in this rhythm, then close the session when the learner has demonstrated understanding.`,
+  },
   {
     name: 'Socratic Mirroring',
     description:
@@ -84,7 +111,11 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
     if (existing) {
       await dbInstance
         .update(conversationPatterns)
-        .set({ prompt: pattern.prompt, description: pattern.description })
+        .set({
+          prompt: pattern.prompt,
+          description: pattern.description,
+          multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
+        })
         .where(eq(conversationPatterns.id, existing.id));
       console.log(`  Updated pattern: ${pattern.name}`);
       continue;
@@ -96,6 +127,7 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
       description: pattern.description,
       prompt: pattern.prompt,
       isBuiltIn: true,
+      multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
     });
 
     console.log(`  Created pattern: ${pattern.name}`);

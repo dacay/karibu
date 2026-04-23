@@ -288,18 +288,30 @@ export function ChatInterface({
     }
   }, [status, messages]);
 
-  const handleSend = useCallback(() => {
+  const submitText = useCallback((text: string) => {
 
-    const text = input.trim();
     if (!text || isLoading) return;
 
     stopStreamTTS();
     streamControllerRef.current = null;
     setSpeakingMessageId(null);
     sendMessage({ text });
+
+  }, [isLoading, sendMessage, stopStreamTTS]);
+
+  const handleSend = useCallback(() => {
+
+    const text = input.trim();
+    if (!text) return;
+    submitText(text);
     setInput("");
 
-  }, [input, isLoading, sendMessage, stopStreamTTS]);
+  }, [input, submitText]);
+
+  const handleOptionClick = useCallback((text: string) => {
+
+    submitText(text);
+  }, [submitText]);
 
   return (
     <div className={cn("flex h-full flex-col overflow-hidden", className)}>
@@ -362,6 +374,7 @@ export function ChatInterface({
         isLoading={isLoading}
         avatar={resolvedAvatar}
         speakingMessageId={speakingMessageId}
+        onOptionClick={handleOptionClick}
       />
 
       {/* Input */}
