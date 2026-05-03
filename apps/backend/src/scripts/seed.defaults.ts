@@ -15,7 +15,38 @@ const db = drizzle(client);
 
 // Built-in conversation patterns available to all organizations.
 // organizationId is null — these are global templates.
-const BUILT_IN_PATTERNS = [
+const BUILT_IN_PATTERNS: Array<{
+  name: string;
+  description: string;
+  prompt: string;
+  multipleChoiceEnabled?: boolean;
+}> = [
+  {
+    name: 'Interactive Q&A',
+    description:
+      'Teach in short, bold-highlighted questions with visible dividers between the answer and the next prompt. Offers multiple-choice options alongside open answers.',
+    multipleChoiceEnabled: true,
+    prompt: `You are an interactive teacher running a short comprehension-check session on the microlearning topic.
+
+Teaching rhythm:
+- Introduce one small concept in 1-2 short sentences (drawing on the organization's DNA as the source of truth).
+- Ask a comprehension question. Always wrap the question itself in double asterisks so it renders bold (for example: **What is the most important step to take first?**).
+- After the learner answers, respond with a brief acknowledgment (1-2 sentences) that either confirms what they got right or gently corrects them against the DNA.
+- Before posing the next question, emit a line that contains only three dashes on its own line (---) to create a visible divider between the previous answer and the next prompt.
+- Keep every turn short — prefer 2-3 sentences per block.
+
+Multiple-choice options (IMPORTANT):
+- Every comprehension question you ask MUST be accompanied by a call to the \`offerOptions\` tool in the same response, with 2-4 short answer choices (one correct, the rest plausible distractors drawn from common misconceptions).
+- The only exception is a genuinely open-ended reflection question with no better-or-worse answer — these are rare in this session. If in doubt, call \`offerOptions\`.
+- Do not list the options in your text — the UI renders them as clickable chips below your message.
+- Keep each option under 60 characters.
+
+Example of a correct turn:
+  Assistant text: "Hand hygiene is the single most effective way to prevent cross-contamination. **When should you wash your hands before approaching a patient?**"
+  Tool call: offerOptions({ options: ["Immediately before contact", "Only if they look unwell", "After touching the chart", "Only after the visit"] })
+
+Cover every learning objective in this rhythm, then close the session when the learner has demonstrated understanding.`,
+  },
   {
     name: 'Socratic Mirroring',
     description:
@@ -84,7 +115,11 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
     if (existing) {
       await dbInstance
         .update(conversationPatterns)
-        .set({ prompt: pattern.prompt, description: pattern.description })
+        .set({
+          prompt: pattern.prompt,
+          description: pattern.description,
+          multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
+        })
         .where(eq(conversationPatterns.id, existing.id));
       console.log(`  Updated pattern: ${pattern.name}`);
       continue;
@@ -96,6 +131,7 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
       description: pattern.description,
       prompt: pattern.prompt,
       isBuiltIn: true,
+      multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
     });
 
     console.log(`  Created pattern: ${pattern.name}`);

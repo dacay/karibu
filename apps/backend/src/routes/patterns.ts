@@ -37,7 +37,12 @@ patternsRouter.get('/', requireRole('admin'), async (c) => {
 patternsRouter.post('/', requireRole('admin'), async (c) => {
 
   const auth = c.get('auth');
-  const body = await c.req.json<{ name: string; description: string; prompt: string }>();
+  const body = await c.req.json<{
+    name: string;
+    description: string;
+    prompt: string;
+    multipleChoiceEnabled?: boolean;
+  }>();
 
   if (!body.name?.trim()) {
     return c.json({ error: 'Pattern name is required.' }, 400);
@@ -55,6 +60,7 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
       description: body.description?.trim() ?? '',
       prompt: body.prompt.trim(),
       isBuiltIn: false,
+      multipleChoiceEnabled: body.multipleChoiceEnabled ?? false,
     })
     .returning();
 
@@ -71,7 +77,12 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
 
   const auth = c.get('auth');
   const id = c.req.param('id');
-  const body = await c.req.json<{ name?: string; description?: string; prompt?: string }>();
+  const body = await c.req.json<{
+    name?: string;
+    description?: string;
+    prompt?: string;
+    multipleChoiceEnabled?: boolean;
+  }>();
 
   const [pattern] = await db
     .select()
@@ -93,6 +104,7 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
       ...(body.name?.trim() ? { name: body.name.trim() } : {}),
       ...(body.description !== undefined ? { description: body.description.trim() } : {}),
       ...(body.prompt?.trim() ? { prompt: body.prompt.trim() } : {}),
+      ...(body.multipleChoiceEnabled !== undefined ? { multipleChoiceEnabled: body.multipleChoiceEnabled } : {}),
     })
     .where(eq(conversationPatterns.id, id))
     .returning();

@@ -230,13 +230,21 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
+  let multipleChoiceEnabled = false;
   if (ml.patternId) {
     const [pattern] = await db
-      .select({ prompt: conversationPatterns.prompt })
+      .select({
+        prompt: conversationPatterns.prompt,
+        multipleChoiceEnabled: conversationPatterns.multipleChoiceEnabled,
+      })
       .from(conversationPatterns)
       .where(eq(conversationPatterns.id, ml.patternId))
       .limit(1);
-    if (pattern) patternPrompt = pattern.prompt;
+    if (pattern) {
+
+      patternPrompt = pattern.prompt;
+      multipleChoiceEnabled = pattern.multipleChoiceEnabled;
+    }
   }
 
   // Load topic, subtopics and DNA values
@@ -340,10 +348,26 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     },
   };
 
+  const offerOptionsTool = {
+    description: 'Attach 2-4 short multiple-choice options to the current question. Options are shown as clickable chips below the message. The learner can still type a free-form answer.',
+    inputSchema: z.object({
+      options: z
+        .array(z.string().min(1).max(80))
+        .min(2)
+        .max(4)
+        .describe('Between 2 and 4 short option strings the learner can pick from.'),
+    }),
+    execute: async () => 'ok',
+  };
+
   const tools: ToolSet = isCompleted
-    ? { searchKnowledge: searchKnowledgeTool }
+    ? {
+        searchKnowledge: searchKnowledgeTool,
+        ...(multipleChoiceEnabled ? { offerOptions: offerOptionsTool } : {}),
+      }
     : {
         searchKnowledge: searchKnowledgeTool,
+        ...(multipleChoiceEnabled ? { offerOptions: offerOptionsTool } : {}),
         markLearningComplete: {
           description: 'Call this tool when ALL learning objectives have been covered and the learner demonstrates sufficient understanding. This marks the microlearning as completed.',
           inputSchema: z.object({
