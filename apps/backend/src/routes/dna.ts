@@ -337,7 +337,7 @@ dnaRouter.post('/subtopics/:id/synthesize', requireRole('admin'), async (c) => {
     const context = chunks.join('\n\n---\n\n');
 
     const { text } = await generateText({
-      model: openai('gpt-4o'),
+      model: openai(env.OPENAI_CHAT_MODEL),
       prompt: `You are helping define an organization's learning DNA.
 
 Topic: ${topic?.name ?? ''}
@@ -457,7 +457,7 @@ dnaRouter.post('/subtopics/:id/generate', requireRole('admin'), async (c) => {
       : null;
 
     const { text } = await generateText({
-      model: openai('gpt-4o'),
+      model: openai(env.OPENAI_CHAT_MODEL),
       prompt: `You are helping define an organization's learning DNA.
 
 Topic: ${topic?.name ?? ''}
@@ -696,7 +696,7 @@ dnaRouter.post('/discover', requireRole('admin'), async (c) => {
   try {
 
     const { text } = await generateText({
-      model: openai('gpt-4o'),
+      model: openai(env.OPENAI_CHAT_MODEL),
       prompt: `Analyze these organizational document excerpts and suggest a topic/subtopic structure that captures the key knowledge domains.
 
 Return ONLY a JSON array (no markdown, no explanation) in this exact format:

@@ -372,7 +372,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       };
 
   const result = streamText({
-    model: openai('gpt-4o'),
+    model: openai(env.OPENAI_CHAT_MODEL),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(3),
@@ -452,7 +452,7 @@ You MUST call reportSource before writing your response. Choose:
   let searchWasCalled = false;
 
   const result = streamText({
-    model: openai('gpt-4o'),
+    model: openai(env.OPENAI_CHAT_MODEL),
     system: assistantSystemPrompt,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(3),
