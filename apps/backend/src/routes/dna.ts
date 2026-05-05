@@ -24,12 +24,12 @@ dnaRouter.get('/', requireRole('admin'), async (c) => {
   const topics = await db
     .select()
     .from(dnaTopics)
-    .where(eq(dnaTopics.organizationId, auth.organizationId));
+    .where(and(eq(dnaTopics.organizationId, auth.organizationId), ne(dnaTopics.status, 'rejected')));
 
   const subtopics = await db
     .select()
     .from(dnaSubtopics)
-    .where(eq(dnaSubtopics.organizationId, auth.organizationId));
+    .where(and(eq(dnaSubtopics.organizationId, auth.organizationId), ne(dnaSubtopics.status, 'rejected')));
 
   const values = await db
     .select()

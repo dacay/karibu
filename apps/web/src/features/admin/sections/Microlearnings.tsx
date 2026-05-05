@@ -276,7 +276,7 @@ function MlForm({
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Topic <span className="text-destructive">*</span></label>
           <NativeSelect value={topicId} onChange={handleTopicChange} placeholder="Select topic">
-            {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {[...topics].filter((t) => t.status === "active").sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </NativeSelect>
         </div>
         <div className="flex flex-col gap-1.5">

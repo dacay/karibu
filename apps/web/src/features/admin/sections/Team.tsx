@@ -242,7 +242,7 @@ function InviteForm({ onClose }: InviteFormProps) {
                   Invited ({result.invited.length})
                 </p>
                 <ul className="text-xs text-muted-foreground space-y-0.5 pl-2">
-                  {result.invited.map((e) => <li key={e}>{e}</li>)}
+                  {result.invited.map((i) => <li key={i.email}>{i.email}</li>)}
                 </ul>
               </div>
             )}

@@ -267,7 +267,7 @@ export interface TeamMember {
 }
 
 export interface InviteResult {
-  invited: string[];
+  invited: { email: string; link: string }[];
   alreadyExists: string[];
   failed: string[];
 }
