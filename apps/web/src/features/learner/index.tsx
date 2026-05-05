@@ -100,9 +100,9 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
         </h3>
 
         {/* Topic · Sequence — secondary context */}
-        {(ml.topic || ml.sequenceName) && (
+        {(ml.topics.length > 0 || ml.sequenceName) && (
           <p className="text-xs text-white/60 truncate">
-            {[ml.topic?.name, ml.sequenceName].filter(Boolean).join(" · ")}
+            {[ml.topics.map((t) => t.name).join(", ") || null, ml.sequenceName].filter(Boolean).join(" · ")}
           </p>
         )}
 
@@ -160,9 +160,9 @@ function ArchiveMLCard({ ml }: { ml: LearnerFeedML }) {
       {/* Content */}
       <div className="relative z-10 flex flex-col gap-2 p-4">
         <h3 className="text-base font-semibold leading-snug line-clamp-2 text-white">{ml.title}</h3>
-        {(ml.topic || ml.sequenceName) && (
+        {(ml.topics.length > 0 || ml.sequenceName) && (
           <p className="text-xs text-white/60 truncate">
-            {[ml.topic?.name, ml.sequenceName].filter(Boolean).join(" · ")}
+            {[ml.topics.map((t) => t.name).join(", ") || null, ml.sequenceName].filter(Boolean).join(" · ")}
           </p>
         )}
 

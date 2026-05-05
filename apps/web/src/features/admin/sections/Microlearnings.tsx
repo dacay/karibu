@@ -64,28 +64,28 @@ import {
 
 const UNASSIGNED = "unassigned";
 
-function topicLabel(topicId: string | null, topics: DnaTopic[]): string {
-  if (!topicId) return "";
-  return topics.find((t) => t.id === topicId)?.name ?? "";
+function topicNames(topicIds: string[] | null, topics: DnaTopic[]): string[] {
+  if (!topicIds || topicIds.length === 0) return [];
+  return topicIds.map((id) => topics.find((t) => t.id === id)?.name).filter((n): n is string => !!n);
 }
 
-function subtopicLabel(ids: string[] | null, topics: DnaTopic[]): string {
-  if (!ids || ids.length === 0) return "";
+function subtopicNames(ids: string[] | null, topics: DnaTopic[]): string[] {
+  if (!ids || ids.length === 0) return [];
   const all = topics.flatMap((t) => t.subtopics);
-  return ids.map((id) => all.find((s) => s.id === id)?.name).filter(Boolean).join(", ");
+  return ids.map((id) => all.find((s) => s.id === id)?.name).filter((n): n is string => !!n);
 }
 
 interface MetaParts {
-  topic: string;
-  subtopics: string;
+  topics: string[];
+  subtopics: string[];
   pattern: string;
   avatar: string;
 }
 
 function metaParts(ml: Microlearning, topics: DnaTopic[], patterns: ConversationPattern[], avatars: Avatar[]): MetaParts {
   return {
-    topic: topicLabel(ml.topicId, topics),
-    subtopics: subtopicLabel(ml.subtopicIds, topics),
+    topics: topicNames(ml.topicIds, topics),
+    subtopics: subtopicNames(ml.subtopicIds, topics),
     pattern: ml.patternId ? (patterns.find((x) => x.id === ml.patternId)?.name ?? "") : "",
     avatar: ml.avatarId ? (avatars.find((x) => x.id === ml.avatarId)?.name ?? "") : "",
   };
@@ -224,7 +224,7 @@ function NativeSelect({ value, onChange, children, placeholder, disabled }: {
 
 interface MlFormValues {
   title: string;
-  topicId: string;
+  topicIds: string[];
   subtopicIds: string[];
   patternId: string;
   avatarId: string;
@@ -250,16 +250,23 @@ function MlForm({
   submitLabel?: string;
 }) {
   const [title, setTitle] = useState(initial.title ?? "");
-  const [topicId, setTopicId] = useState(initial.topicId ?? "");
+  const [topicIds, setTopicIds] = useState<string[]>(initial.topicIds ?? []);
   const [subtopicIds, setSubtopicIds] = useState<string[]>(initial.subtopicIds ?? []);
   const [patternId, setPatternId] = useState(initial.patternId ?? "");
   const [avatarId, setAvatarId] = useState(initial.avatarId ?? "");
 
-  const selectedTopic = topics.find((t) => t.id === topicId);
+  const selectedTopics = topics.filter((t) => topicIds.includes(t.id));
 
-  function handleTopicChange(id: string) {
-    setTopicId(id);
-    setSubtopicIds([]);
+  function toggleTopic(id: string) {
+    setTopicIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id];
+      // Drop any subtopics whose parent topic is no longer selected
+      const allowedSubtopicIds = new Set(
+        topics.filter((t) => next.includes(t.id)).flatMap((t) => t.subtopics.map((s) => s.id)),
+      );
+      setSubtopicIds((current) => current.filter((sid) => allowedSubtopicIds.has(sid)));
+      return next;
+    });
   }
 
   function toggleSubtopic(id: string) {
@@ -268,30 +275,44 @@ function MlForm({
     );
   }
 
+  const availableSubtopics = selectedTopics
+    .flatMap((t) => t.subtopics.map((s) => ({ ...s, topicName: t.name })))
+    .filter((s) => s.values.some((v) => v.approval === "approved"))
+    .sort((a, b) => a.topicName.localeCompare(b.topicName) || a.name.localeCompare(b.name));
+
   return (
     <div className="flex flex-col gap-3 p-4 border rounded-lg bg-muted/30">
       <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Topic <span className="text-destructive">*</span></label>
-          <NativeSelect value={topicId} onChange={handleTopicChange} placeholder="Select topic">
-            {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </NativeSelect>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Pattern <span className="text-destructive">*</span></label>
-          <NativeSelect value={patternId} onChange={setPatternId} placeholder="Select pattern">
-            {patterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </NativeSelect>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Topics <span className="text-destructive">*</span></label>
+        <div className="flex flex-wrap gap-2 p-3 border rounded-md bg-background">
+          {[...topics].sort((a, b) => a.name.localeCompare(b.name)).map((t) => (
+            <label key={t.id} className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={topicIds.includes(t.id)}
+                onChange={() => toggleTopic(t.id)}
+                className="rounded border-input"
+              />
+              <span className="text-sm">{t.name}</span>
+            </label>
+          ))}
         </div>
       </div>
 
-      {selectedTopic && selectedTopic.subtopics.filter((s) => s.values.some((v) => v.approval === "approved")).length > 0 && (
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Pattern <span className="text-destructive">*</span></label>
+        <NativeSelect value={patternId} onChange={setPatternId} placeholder="Select pattern">
+          {patterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </NativeSelect>
+      </div>
+
+      {availableSubtopics.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Subtopics</label>
           <div className="flex flex-wrap gap-2 p-3 border rounded-md bg-background">
-            {[...selectedTopic.subtopics].filter((s) => s.values.some((v) => v.approval === "approved")).sort((a, b) => a.name.localeCompare(b.name)).map((s) => (
+            {availableSubtopics.map((s) => (
               <label key={s.id} className="flex items-center gap-1.5 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -299,7 +320,12 @@ function MlForm({
                   onChange={() => toggleSubtopic(s.id)}
                   className="rounded border-input"
                 />
-                <span className="text-sm">{s.name}</span>
+                <span className="text-sm">
+                  {s.name}
+                  {selectedTopics.length > 1 && (
+                    <span className="text-muted-foreground"> · {s.topicName}</span>
+                  )}
+                </span>
               </label>
             ))}
           </div>
@@ -314,7 +340,7 @@ function MlForm({
       </div>
 
       <div className="flex gap-2">
-        <Button size="sm" disabled={!title.trim() || !topicId || !patternId || !avatarId || isLoading} onClick={() => { if (!title.trim() || !topicId || !patternId || !avatarId) return; onSave({ title, topicId, subtopicIds, patternId, avatarId }); }}>
+        <Button size="sm" disabled={!title.trim() || topicIds.length === 0 || !patternId || !avatarId || isLoading} onClick={() => { if (!title.trim() || topicIds.length === 0 || !patternId || !avatarId) return; onSave({ title, topicIds, subtopicIds, patternId, avatarId }); }}>
           {isLoading ? <Spinner className="size-3 mr-1" /> : null}
           {submitLabel}
         </Button>
@@ -433,7 +459,7 @@ function MlRow({
       <MlForm
         initial={{
           title: ml.title,
-          topicId: ml.topicId ?? "",
+          topicIds: ml.topicIds ?? [],
           subtopicIds: ml.subtopicIds ?? [],
           patternId: ml.patternId ?? "",
           avatarId: ml.avatarId ?? "",
@@ -449,16 +475,17 @@ function MlRow({
     );
   }
 
-  const subtopicList = meta.subtopics ? meta.subtopics.split(", ").filter(Boolean) : [];
+  const topicList = meta.topics;
+  const subtopicList = meta.subtopics;
 
   // Detect per-category loading: id is set but label resolved to empty = data not yet loaded
-  const topicLoading = !!ml.topicId && !meta.topic;
+  const topicsLoading = !!(ml.topicIds?.length) && topicList.length === 0;
   const patternLoading = !!ml.patternId && !meta.pattern;
   const avatarLoading = !!ml.avatarId && !meta.avatar;
   const subtopicsLoading = !!(ml.subtopicIds?.length) && subtopicList.length === 0;
 
-  const hasAnything = meta.topic || meta.pattern || meta.avatar || subtopicList.length > 0
-    || topicLoading || patternLoading || avatarLoading || subtopicsLoading;
+  const hasAnything = topicList.length > 0 || meta.pattern || meta.avatar || subtopicList.length > 0
+    || topicsLoading || patternLoading || avatarLoading || subtopicsLoading;
 
   return (
     <div
@@ -527,15 +554,18 @@ function MlRow({
         </div>
         {hasAnything && (
           <div className="flex items-center gap-1 flex-wrap">
-            {/* Topic */}
-            {topicLoading ? (
+            {/* Topics */}
+            {topicsLoading ? (
               <span className="inline-flex h-4 w-16 rounded bg-muted/50 animate-pulse" />
-            ) : meta.topic && (
-              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+            ) : topicList.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+              >
                 <Tag className="size-2.5 shrink-0" />
-                {meta.topic}
+                {t}
               </span>
-            )}
+            ))}
             {/* Subtopics */}
             {subtopicsLoading ? (
               <span className="inline-flex h-4 w-12 rounded bg-muted/40 animate-pulse" />
@@ -682,7 +712,7 @@ export function MicrolearningsSection() {
     mutationFn: (v: MlFormValues) =>
       api.microlearnings.create({
         title: v.title,
-        topicId: v.topicId || null,
+        topicIds: v.topicIds,
         subtopicIds: v.subtopicIds,
         patternId: v.patternId || null,
         avatarId: v.avatarId || null,
@@ -695,7 +725,7 @@ export function MicrolearningsSection() {
     mutationFn: ({ id, v }: { id: string; v: MlFormValues }) =>
       api.microlearnings.update(id, {
         title: v.title,
-        topicId: v.topicId || null,
+        topicIds: v.topicIds,
         subtopicIds: v.subtopicIds,
         patternId: v.patternId || null,
         avatarId: v.avatarId || null,

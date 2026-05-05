@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { microlearnings, organizations, dnaTopics, dnaSubtopics } from '../db/schema.js';
 import {
@@ -13,20 +13,24 @@ import { logger } from '../config/logger.js';
 import { broadcastFeedUpdate } from '../routes/learner-sse.js';
 
 /**
- * Build a prompt for Gemini image generation based on the ML's topic and subtopics.
+ * Build a prompt for Gemini image generation based on the ML's topics and subtopics.
  */
 function buildImagePrompt(
-  topicName: string,
+  topicNames: string[],
   subtopicNames: string[],
   organizationName: string,
 ): string {
+  const topicList = topicNames.length > 0
+    ? topicNames.map((n) => `"${n}"`).join(', ')
+    : '"professional development"';
+
   const subtopicList = subtopicNames.length > 0
     ? ` focusing on ${subtopicNames.join(', ')}`
     : '';
 
   return (
     `Generate a hyper-realistic, visually striking cover image for a microlearning module. ` +
-    `The module is about "${topicName}"${subtopicList} at an organization called "${organizationName}". ` +
+    `The module is about ${topicList}${subtopicList} at an organization called "${organizationName}". ` +
     `Create an atmospheric, professional scene that visually represents this topic. ` +
     `The image should work well as a card background with text overlaid on it — ` +
     `use rich colors, depth of field, and cinematic lighting. ` +
@@ -87,31 +91,27 @@ export async function generateMlImage(mlId: string): Promise<void> {
 
     if (!org) return;
 
-    // Resolve topic name
-    let topicName = 'professional development';
-    if (ml.topicId) {
-      const [topic] = await db
+    // Resolve topic names
+    const topicNames: string[] = [];
+    if (ml.topicIds && ml.topicIds.length > 0) {
+      const topicRows = await db
         .select({ name: dnaTopics.name })
         .from(dnaTopics)
-        .where(eq(dnaTopics.id, ml.topicId))
-        .limit(1);
-      if (topic) topicName = topic.name;
+        .where(inArray(dnaTopics.id, ml.topicIds));
+      topicNames.push(...topicRows.map((t) => t.name));
     }
 
     // Resolve subtopic names
     const subtopicNames: string[] = [];
     if (ml.subtopicIds && ml.subtopicIds.length > 0) {
-      for (const stId of ml.subtopicIds) {
-        const [st] = await db
-          .select({ name: dnaSubtopics.name })
-          .from(dnaSubtopics)
-          .where(eq(dnaSubtopics.id, stId))
-          .limit(1);
-        if (st) subtopicNames.push(st.name);
-      }
+      const subtopicRows = await db
+        .select({ name: dnaSubtopics.name })
+        .from(dnaSubtopics)
+        .where(inArray(dnaSubtopics.id, ml.subtopicIds));
+      subtopicNames.push(...subtopicRows.map((s) => s.name));
     }
 
-    const prompt = buildImagePrompt(topicName, subtopicNames, org.name);
+    const prompt = buildImagePrompt(topicNames, subtopicNames, org.name);
 
     const model = env.GEMINI_IMAGE_MODEL;
     logger.info({ mlId, model, prompt }, 'Generating ML cover image with Gemini.');

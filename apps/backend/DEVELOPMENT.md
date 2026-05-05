@@ -211,8 +211,8 @@ Each microlearning gets an AI-generated cover image used as a full-bleed card ba
 1. Admin creates an ML (`POST /microlearnings`) — the route returns 201 immediately.
 2. `generateMlImage(mlId)` runs fire-and-forget from the route handler (see `src/routes/microlearnings.ts`).
 3. The service (`src/services/ml-image-generator.ts`):
-   - Loads the ML, its org, topic, and subtopics
-   - Builds a prompt from topic name + subtopic names + org name
+   - Loads the ML, its org, topics, and subtopics
+   - Builds a prompt from topic names + subtopic names + org name
    - Optionally fetches the org's light logo via CDN and passes it as an `inlineData` reference part to bias colors/style
    - Calls Gemini `generateContent` with `responseModalities: ['IMAGE']`
    - Extracts the returned base64 image, uploads to the assets bucket, and sets `microlearnings.imageS3Key`

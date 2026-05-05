@@ -90,7 +90,7 @@ export const microlearnings = pgTable('microlearnings', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   status: microlearningStatusEnum('status').notNull().default('draft'),
-  topicId: uuid('topic_id').references(() => dnaTopics.id, { onDelete: 'set null' }),
+  topicIds: jsonb('topic_ids').$type<string[]>(),
   subtopicIds: jsonb('subtopic_ids').$type<string[]>(),
   patternId: uuid('pattern_id').references(() => conversationPatterns.id, { onDelete: 'set null' }),
   avatarId: uuid('avatar_id').references(() => avatars.id, { onDelete: 'set null' }),

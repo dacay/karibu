@@ -163,7 +163,10 @@ dnaRouter.delete('/topics/:id', requireRole('admin'), async (c) => {
   const linkedByTopic = await db
     .select({ id: microlearnings.id, title: microlearnings.title })
     .from(microlearnings)
-    .where(and(eq(microlearnings.topicId, id), eq(microlearnings.organizationId, auth.organizationId)))
+    .where(and(
+      eq(microlearnings.organizationId, auth.organizationId),
+      sql`${microlearnings.topicIds}::jsonb @> ${JSON.stringify([id])}::jsonb`,
+    ))
     .limit(5);
 
   if (linkedByTopic.length > 0) {

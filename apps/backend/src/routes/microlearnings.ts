@@ -228,7 +228,7 @@ microlearningsRouter.get('/feed', async (c) => {
   // ── 6. Fetch supporting data (avatars, topics, sequence names) ─────────────
 
   const avatarIds = [...new Set(allMLs.map((m) => m.avatarId).filter(Boolean))] as string[];
-  const topicIds = [...new Set(allMLs.map((m) => m.topicId).filter(Boolean))] as string[];
+  const topicIds = [...new Set(allMLs.flatMap((m) => m.topicIds ?? []))];
 
   const [avatarRows, topicRows, seqNameRows] = await Promise.all([
     avatarIds.length > 0
@@ -252,7 +252,7 @@ microlearningsRouter.get('/feed', async (c) => {
   const buildItem = (ml: typeof allMLs[0], sequenceName: string | null) => ({
     ...ml,
     avatar: avatarRows.find((a) => a.id === ml.avatarId) ?? null,
-    topic: topicRows.find((t) => t.id === ml.topicId) ?? null,
+    topics: topicRows.filter((t) => (ml.topicIds ?? []).includes(t.id)),
     progress: progressMap.get(ml.id) ?? null,
     sequenceName,
   });
@@ -379,14 +379,14 @@ microlearningsRouter.get('/:id', async (c) => {
       .limit(1)
     : [null];
 
-  // Fetch topic name
-  const [topic] = ml.topicId
+  // Fetch topic names
+  const mlTopicIds = ml.topicIds ?? [];
+  const topicRows = mlTopicIds.length > 0
     ? await db
       .select({ id: dnaTopics.id, name: dnaTopics.name })
       .from(dnaTopics)
-      .where(eq(dnaTopics.id, ml.topicId))
-      .limit(1)
-    : [null];
+      .where(inArray(dnaTopics.id, mlTopicIds))
+    : [];
 
   // Fetch current user's progress
   let [progress] = await db
@@ -413,7 +413,7 @@ microlearningsRouter.get('/:id', async (c) => {
     microlearning: {
       ...ml,
       avatar: avatar ?? null,
-      topic: topic ?? null,
+      topics: topicRows,
     },
     progress: progress ?? null,
   });
@@ -448,7 +448,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
   const body = await c.req.json<{
     title: string;
     status?: 'draft' | 'published';
-    topicId: string;
+    topicIds: string[];
     subtopicIds?: string[];
     patternId: string;
     avatarId: string;
@@ -459,8 +459,8 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
   if (!body.title?.trim()) {
     return c.json({ error: 'Title is required.' }, 400);
   }
-  if (!body.topicId) {
-    return c.json({ error: 'Topic is required.' }, 400);
+  if (!Array.isArray(body.topicIds) || body.topicIds.length === 0) {
+    return c.json({ error: 'At least one topic is required.' }, 400);
   }
   if (!body.patternId) {
     return c.json({ error: 'Pattern is required.' }, 400);
@@ -475,7 +475,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
       organizationId: auth.organizationId,
       title: body.title.trim(),
       status: body.status ?? 'draft',
-      topicId: body.topicId ?? null,
+      topicIds: body.topicIds,
       subtopicIds: body.subtopicIds ?? [],
       patternId: body.patternId ?? null,
       avatarId: body.avatarId ?? null,
@@ -505,7 +505,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
   const body = await c.req.json<{
     title?: string;
     status?: 'draft' | 'published';
-    topicId?: string | null;
+    topicIds?: string[];
     subtopicIds?: string[];
     patternId?: string | null;
     avatarId?: string | null;
@@ -526,7 +526,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
   const updates: Partial<typeof existing> = {};
   if (body.title?.trim()) updates.title = body.title.trim();
   if ('status' in body && body.status) updates.status = body.status;
-  if ('topicId' in body) updates.topicId = body.topicId ?? null;
+  if ('topicIds' in body) updates.topicIds = body.topicIds ?? [];
   if ('subtopicIds' in body) updates.subtopicIds = body.subtopicIds ?? [];
   if ('patternId' in body) updates.patternId = body.patternId ?? null;
   if ('avatarId' in body) updates.avatarId = body.avatarId ?? null;

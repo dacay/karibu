@@ -45,8 +45,7 @@ chat.use('*', authMiddleware());
  */
 function buildMLSystemPrompt(
   patternPrompt: string,
-  topicName: string | null,
-  topicDescription: string | null,
+  topics: Array<{ name: string; description: string }>,
   subtopics: Array<{ name: string; description: string }>,
   dnaKnowledge: string[],
   isCompleted: boolean,
@@ -57,11 +56,16 @@ function buildMLSystemPrompt(
 
   parts.push(`\nORGANIZATION: ${organizationName}`);
 
-  if (topicName) {
-    parts.push(`\n---\nMICROLEARNING TOPIC: ${topicName}`);
-    if (topicDescription) {
-      parts.push(topicDescription);
+  if (topics.length === 1) {
+    parts.push(`\n---\nMICROLEARNING TOPIC: ${topics[0].name}`);
+    if (topics[0].description) {
+      parts.push(topics[0].description);
     }
+  } else if (topics.length > 1) {
+    parts.push('\n---\nMICROLEARNING TOPICS:');
+    topics.forEach((t) => {
+      parts.push(`- ${t.name}${t.description ? `: ${t.description}` : ''}`);
+    });
   }
 
   if (subtopics.length > 0) {
@@ -239,29 +243,28 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     if (pattern) patternPrompt = pattern.prompt;
   }
 
-  // Load topic, subtopics and DNA values
-  let topicName: string | null = null;
-  let topicDescription: string | null = null;
+  // Load topics, subtopics and DNA values
+  let mlTopics: Array<{ name: string; description: string }> = [];
   let relevantSubtopics: Array<{ name: string; description: string }> = [];
   let dnaKnowledge: string[] = [];
 
-  if (ml.topicId) {
+  const mlTopicIds = ml.topicIds ?? [];
 
-    const [topic] = await db
+  if (mlTopicIds.length > 0) {
+
+    const topicRows = await db
       .select()
       .from(dnaTopics)
-      .where(eq(dnaTopics.id, ml.topicId))
-      .limit(1);
+      .where(inArray(dnaTopics.id, mlTopicIds));
 
-    if (topic) {
-      topicName = topic.name;
-      topicDescription = topic.description;
+    if (topicRows.length > 0) {
+      mlTopics = topicRows.map((t) => ({ name: t.name, description: t.description }));
 
-      // Get subtopics: if ML specifies subtopicIds, use those; otherwise use all in topic
+      // Get subtopics: if ML specifies subtopicIds, use those; otherwise use all in selected topics
       const allSubtopics = await db
         .select()
         .from(dnaSubtopics)
-        .where(eq(dnaSubtopics.topicId, ml.topicId));
+        .where(inArray(dnaSubtopics.topicId, mlTopicIds));
 
       const subtopicsToUse = (ml.subtopicIds && ml.subtopicIds.length > 0)
         ? allSubtopics.filter((s) => ml.subtopicIds!.includes(s.id))
@@ -311,8 +314,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   // Build system prompt
   const systemPrompt = buildMLSystemPrompt(
     patternPrompt,
-    topicName,
-    topicDescription,
+    mlTopics,
     relevantSubtopics,
     dnaKnowledge,
     isCompleted,

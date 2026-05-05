@@ -177,7 +177,7 @@ export interface Microlearning {
   organizationId: string;
   title: string;
   status: "draft" | "published";
-  topicId: string | null;
+  topicIds: string[] | null;
   subtopicIds: string[] | null;
   patternId: string | null;
   avatarId: string | null;
@@ -200,7 +200,7 @@ export interface MicrolearningProgress {
 
 export interface MicrolearningWithDetails extends Microlearning {
   avatar: Avatar | null;
-  topic: { id: string; name: string } | null;
+  topics: { id: string; name: string }[];
   progress: MicrolearningProgress | null;
 }
 
@@ -499,7 +499,7 @@ export const api = {
       request<{ microlearnings: Microlearning[] }>("/microlearnings"),
     create: (body: {
       title: string;
-      topicId?: string | null;
+      topicIds?: string[];
       subtopicIds?: string[];
       patternId?: string | null;
       avatarId?: string | null;
@@ -513,7 +513,7 @@ export const api = {
     update: (id: string, body: {
       title?: string;
       status?: "draft" | "published";
-      topicId?: string | null;
+      topicIds?: string[];
       subtopicIds?: string[];
       patternId?: string | null;
       avatarId?: string | null;
