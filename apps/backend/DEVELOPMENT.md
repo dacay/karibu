@@ -247,6 +247,53 @@ Each microlearning gets an AI-generated cover image used as a full-bleed card ba
 | `GET` | `/flags` | admin | Full list with message text, chat type, ML title, flagging user |
 | `PATCH` | `/flags/:id/status` | admin | Update status to `reviewed` or `dismissed` |
 
+## Per-ML Completion Webhook
+
+Each microlearning can carry an optional outbound webhook URL. When a learner completes the ML, the backend fires a fire-and-forget POST to that URL. Used by the Teambridge integration to mark a learner's verification on shift records, but the mechanism is generic — any URL works.
+
+### Data model
+
+Single nullable column on `microlearnings`:
+- `completion_webhook_url text` — null = no webhook. Per-ML so different MLs can target different consumers.
+
+### Trigger
+
+`src/routes/chat.ts` `markLearningComplete` tool (the AI assistant's "we're done" call): after flipping `microlearning_progress.status = 'completed'`, it reads `ml.completionWebhookUrl` and, if set, calls `notifyMlCompletion(...)` from `src/services/completion-webhook.ts`. Fire-and-forget (`void`-prefixed) so the chat handler never blocks on the outbound call. All errors are caught inside the service and logged at `error`/`warn`; the chat handler never sees them.
+
+### Payload
+
+```json
+{
+  "karibuUserId": "<user uuid>",
+  "organizationId": "<org uuid>",
+  "microlearningId": "<ml uuid>",
+  "completedAt": "<ISO8601>",
+  "email": "<optional>"
+}
+```
+
+### Configuring a URL on an ML
+
+Two paths:
+- **SQL**: `UPDATE microlearnings SET completion_webhook_url = '...' WHERE id = '...';`
+- **Script**: `pnpm --filter karibu-backend set-ml-webhook <ml_id> <url|--clear>` — wraps `src/scripts/set-ml-completion-webhook.ts`. Validates the URL parses, errors if the ML id doesn't exist.
+
+There's no UI by design — this is a developer-facing knob, not a customer-configurable feature.
+
+### `/team/invite` response shape
+
+The team-invite endpoint also doubles as a sign-in-link source for integrations, so its response covers both newly created and pre-existing users:
+
+```ts
+{
+  invited:       { email, userId, link }[],
+  alreadyExists: { email, userId, link }[],
+  failed:        string[],
+}
+```
+
+For pre-existing users, the latest `auth_tokens` row is reused to build the link (or a new token is minted if none exist). This matters because the Teambridge integration calls `/team/invite` for every fresh nurse-facility onboarding and needs a usable link regardless of whether the Karibu user was just created or already a member of the org.
+
 ## AI Assistant Notes
 
 This project includes semantic code search embeddings (qmd) for AI-powered codebase exploration.
