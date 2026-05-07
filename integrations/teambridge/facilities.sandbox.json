@@ -1,0 +1,7 @@
+{
+  "516b4b3f-85ba-4468-9f9b-db3dc97f9c6b": {
+    "name": "Karibu nursing home",
+    "karibu_base_url": "http://demo.localhost:3000",
+    "karibu_api_key_env": "KARIBU_NURSING_HOME_API_KEY"
+  }
+}

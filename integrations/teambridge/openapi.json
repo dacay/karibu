@@ -1,0 +1,1700 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Teambridge External API",
+    "version": "0.1.0",
+    "description": "External API for Teambridge platform.\n\n**Date-Time Format**: All date-time fields in this API use ISO 8601 format with timezone information (YYYY-MM-DDTHH:MM:SSZ).\nExamples: `2025-06-05T09:00:00Z` (UTC), `2025-06-05T09:00:00-07:00` (with timezone offset).\n\n**Authentication**: This API uses OAuth 2.0 Client Credentials flow for authentication.\n\n**Filtering**: The unified Collections API supports advanced filtering via query parameters. See the Collections (Unified API) section for full details.\n"
+  },
+  "servers": [
+    {
+      "url": "https://open-api.teambridge.com",
+      "description": "Production API server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "OAuth2": {
+        "type": "oauth2",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://teambridge.us.auth0.com/oauth/token",
+            "scopes": {
+              "write": "Full access"
+            }
+          }
+        }
+      },
+      "WebhookSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Webhook-Signature",
+        "description": "HMAC-SHA256 signature for webhook authentication. The signature is computed from\nthe concatenation of the timestamp and request body: `{timestamp}.{body}`.\nThe signature header value includes the scheme prefix: `sha256={hex_signature}`.\n\nWebhook consumers must verify this signature using their webhook secret to ensure\nthe request originated from Teambridge.\n"
+      }
+    },
+    "schemas": {
+      "Collection": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "Shifts"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ListCollectionsMetadata": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "count": {
+            "type": "integer",
+            "example": 1
+          }
+        },
+        "required": [
+          "accountId",
+          "count"
+        ]
+      },
+      "ListCollectionsResponse": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/ListCollectionsMetadata"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Collection"
+            }
+          }
+        }
+      },
+      "TimezonesList": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "List of supported timezone identifiers",
+        "example": [
+          "America/Los_Angeles",
+          "America/New_York",
+          "Europe/London",
+          "Asia/Tokyo"
+        ]
+      },
+      "CreateDocumentRequest": {
+        "type": "object",
+        "properties": {
+          "isRequired": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the document is required",
+            "example": true
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "PENDING",
+              "COMPLETED",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "description": "Document status",
+            "example": "PENDING"
+          },
+          "userId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "ID of the user associated with the document",
+            "example": "123e4567-e89b-12d3-a456-426614174000"
+          },
+          "roles": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "description": "List of role names to associate with the document (max 10)",
+            "example": [
+              "nurse",
+              "admin"
+            ]
+          },
+          "expiryDate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Document expiry date in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SSZ)",
+            "example": "2025-12-31T23:59:59Z"
+          },
+          "customFields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Map of custom field values to store with the document. Keys must be valid UUIDs\ncorresponding to custom field schema IDs defined in the document collection.\nInvalid or unknown schema UUIDs will result in a `400` error.\n",
+            "example": {
+              "550e8400-e29b-41d4-a716-446655440000": "Issued by State Board",
+              "660e8400-e29b-41d4-a716-446655440001": "2026-01-15"
+            }
+          }
+        }
+      },
+      "CreateDocumentResponse": {
+        "type": "object",
+        "required": [
+          "url",
+          "fileName",
+          "contentType"
+        ],
+        "properties": {
+          "recordId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "200c7b23-5ba6-4cf4-a332-6da9394b7112"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the uploaded document",
+            "example": "https://storage.example.com/documents/550e8400-e29b-41d4-a716-446655440000/document.pdf"
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Name of the uploaded file",
+            "example": "certification.pdf"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "MIME type of the uploaded file",
+            "example": "application/pdf"
+          },
+          "customFields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {},
+            "description": "Map of custom field values stored with the document. Keys are the custom field\nschema UUIDs. Present only when custom fields were provided at upload time.\n",
+            "example": {
+              "550e8400-e29b-41d4-a716-446655440000": "Issued by State Board",
+              "660e8400-e29b-41d4-a716-446655440001": "2026-01-15"
+            }
+          }
+        }
+      },
+      "Field": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the field",
+            "example": "199c7b23-5ba6-4cf4-a778-6da9394b7884"
+          },
+          "name": {
+            "type": "string",
+            "description": "Field name/label",
+            "example": "Nursing License Number"
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "Whether this field is read-only. Read-only fields (typically COMPUTED or AGGREGATE types)\ncannot be set via write operations.\n",
+            "example": false
+          },
+          "type": {
+            "type": "string",
+            "description": "Public-facing field type",
+            "enum": [
+              "TEXT",
+              "NUMBER",
+              "BOOLEAN",
+              "DATETIME",
+              "CURRENCY",
+              "PHONE",
+              "EMAIL",
+              "ADDRESS",
+              "SINGLE_SELECT",
+              "MULTI_SELECT",
+              "LINK_TO_USER",
+              "LINK_TO_LOCATION",
+              "LINK_TO_ROLE",
+              "LINK_TO_JOB",
+              "LINK_TO_SHIFT",
+              "LINK_TO_PLACEMENT",
+              "LINK_TO_PROJECT",
+              "LINK_TO_SHIFT_GROUP",
+              "LINK_TO_CONTACT",
+              "LINK_TO_TASK",
+              "CUSTOM_FIELD",
+              "COMPUTED",
+              "AGGREGATE",
+              "GEOFENCE",
+              "FILE",
+              "BREAK",
+              "DATETIME_RANGE",
+              "RATING"
+            ],
+            "example": "PHONE"
+          },
+          "selectOptions": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/SelectOption"
+            },
+            "description": "Available options for native select fields (SINGLE_SELECT and MULTI_SELECT types only).\nNot populated for LINK_TO_* fields or CUSTOM_FIELD types - query those collections separately\nusing the linkedCollectionId.\n"
+          },
+          "writeFormatHint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Format hint for write operations. Only present for writable fields (readOnly=false).\nCommon values: \"plain_text\", \"single_uuid\", \"comma_separated_uuids\", \"iso8601_datetime\",\n\"e164_phone\", \"email\", \"currency_amount\", \"boolean\", \"number\", \"numeric_string\"\n",
+            "example": "e164_phone"
+          },
+          "linkedCollectionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "For LINK_TO_* and CUSTOM_FIELD types, the UUID of the collection to query for valid record options.\nQuery GET /v1/collections/{linkedCollectionId}/records to see available options.\n",
+            "example": "b8e9e5a9-074d-4df2-a95a-4c8dbd5d8781"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "readOnly",
+          "type"
+        ]
+      },
+      "SelectOption": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Option identifier (use this UUID in write requests)",
+            "example": "bb31a869-2e73-4468-ab94-73ea256e08a2"
+          },
+          "name": {
+            "type": "string",
+            "description": "Option display name",
+            "example": "RN - Registered Nurse"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "GenericWriteRequest": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Map of field UUIDs to string values. Keys are the field identifiers (UUIDs),\nvalues are the field values formatted according to the field's writeFormatHint.\n",
+            "example": {
+              "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+              "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+              "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com",
+              "f7958d78-9e4c-4d23-a16e-ac732636b281": "+14155551234",
+              "7064ba02-0ba2-48ca-9d0d-3698630b0050": "1985-03-15T00:00:00Z",
+              "39336d37-1d19-4b84-9bf9-6d8e88938558": "bb31a869-2e73-4468-ab94-73ea256e08a2,68ddbd25-b819-4362-add1-9c87c079515c",
+              "1d566c20-accd-450f-afad-8c572f176bd0": "4bfabc6f-f512-4c48-849b-8c94b83c215e"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "RecordData": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Record data as a map of field UUIDs to values. Keys are field identifiers (UUIDs).\nValues are typed according to the field type (string, number, boolean, object, array, or null).\n",
+        "example": {
+          "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+          "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+          "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com",
+          "f7958d78-9e4c-4d23-a16e-ac732636b281": "+14155551234",
+          "8d74ff97-4cb5-49c8-af77-a3d98af4b1c2": false,
+          "ade2b23c-6a3b-49fe-bc13-d37b0c39941c": 1234,
+          "0fe6e99f-8e3a-4f21-b315-3b149bcdf2f7": "2024-01-15T10:30:00Z"
+        }
+      },
+      "CreateRecordResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "string",
+            "description": "Success message containing the created record ID",
+            "example": "Resource created with ID: 123e4567-e89b-12d3-a456-426614174000"
+          },
+          "error": {
+            "type": "null"
+          }
+        }
+      },
+      "GenericErrorResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message describing what went wrong",
+            "example": "The page size exceeds the limit of 50"
+          }
+        }
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message"
+          },
+          "code": {
+            "type": "string",
+            "description": "Machine-readable error code"
+          }
+        },
+        "required": [
+          "message",
+          "code"
+        ]
+      },
+      "StandardErrorResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "null"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "MappingDto": {
+        "type": "object",
+        "required": [
+          "mappingId",
+          "recordId",
+          "providerCode",
+          "externalId",
+          "createdAt"
+        ],
+        "properties": {
+          "mappingId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the mapping",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "recordId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the record in Teambridge",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "providerCode": {
+            "type": "string",
+            "description": "Code identifying the external provider",
+            "example": "BULLHORN"
+          },
+          "externalId": {
+            "type": "string",
+            "description": "ID of the entity in the external system",
+            "example": "EXT-12345"
+          },
+          "externalObjectType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Type of the object in the external system",
+            "example": "Candidate"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the mapping was created in ISO 8601 format with timezone (YYYY-MM-DDTHH:MM:SSZ)",
+            "example": "2025-01-15T10:30:00Z"
+          }
+        }
+      },
+      "CreateMappingRequest": {
+        "type": "object",
+        "required": [
+          "recordId",
+          "providerCode",
+          "externalId",
+          "externalObjectType"
+        ],
+        "properties": {
+          "recordId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the record in Teambridge",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "providerCode": {
+            "type": "string",
+            "description": "Code identifying the external provider",
+            "example": "BULLHORN"
+          },
+          "externalId": {
+            "type": "string",
+            "description": "ID of the entity in the external system",
+            "example": "EXT-12345"
+          },
+          "externalObjectType": {
+            "type": "string",
+            "description": "Type of the object in the external system",
+            "example": "Candidate"
+          }
+        }
+      },
+      "UpdateMappingRequest": {
+        "type": "object",
+        "required": [
+          "externalId"
+        ],
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "description": "New external ID for the mapping",
+            "example": "EXT-67890"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "OAuth2": [
+        "write"
+      ]
+    }
+  ],
+  "tags": [
+    {
+      "name": "Collections (Unified API)",
+      "description": "**Powerful generic endpoints** for reading and writing any collection type.\nWorks with all collections using field UUIDs. Query `/fields` first to\ndiscover the schema, then use these endpoints for flexible data access across\nall collection types (shifts, users, placements, locations, custom collections, etc.).\n\n## Filtering\n\nThe unified Collections API (`/v1/collections/{collectionId}/records`) supports powerful filtering via query parameters.\nYou can filter records by adding query parameters in the format `{fieldUUID}_{operator}={value}`.\n\n**Supported Operators:**\n- `_is`: Exact match (all field types) - **default if no suffix provided**\n- `_contains`: Partial text match (TEXT fields only)\n- `_gt`: Greater than (NUMBER, DATETIME fields)\n- `_gte`: Greater than or equal (NUMBER, DATETIME fields)\n- `_lt`: Less than (NUMBER, DATETIME fields)\n- `_lte`: Less than or equal (NUMBER, DATETIME fields)\n\n**Filtering Features:**\n- **Multiple filters**: Up to 10 filters per request with implicit AND logic (all must match)\n- **Default operator**: Parameters without a suffix default to `_is` behavior\n- **Multiple operators on same field**: Allowed (e.g., `age_gte=21&age_lte=65` for range queries)\n- **Case-insensitive**: TEXT and SELECT field matching is case-insensitive\n- **Smart date handling**: DATETIME fields support both date-only (`2025-01-01`) and full ISO 8601 format (`2025-01-01T14:30:00Z`)\n\n**Reserved Parameters**: The following parameter names are reserved and cannot be used as filter bases: `page`, `size`, `limit`, `offset`.\n\n**Filtering Examples:**\n- Single filter (exact match): `?550e8400-..._is=john@example.com`\n- Default operator (no suffix): `?550e8400-...=john@example.com` (equivalent to `_is`)\n- Partial text match: `?550e8400-..._contains=john`\n- Date exact match: `?abc123-..._is=2025-12-01`\n- Date range: `?abc123-..._gte=2025-01-01&abc123-..._lte=2025-12-31`\n- Number range: `?age-uuid-..._gte=21&age-uuid-..._lte=65`\n- Multiple fields: `?550e8400-..._is=john@example.com&7c9e6679-..._is=active`\n- Mixed operators: `?name-uuid-..._contains=john&age-uuid-..._gte=21`\n"
+    },
+    {
+      "name": "Documents",
+      "description": "Endpoints for uploading and managing documents."
+    },
+    {
+      "name": "Utilities",
+      "description": "Utility endpoints for timezone information and other general-purpose data."
+    },
+    {
+      "name": "Mappings",
+      "description": "Endpoints for managing external system mappings. Mappings link Teambridge records\nto entities in external systems (like Bullhorn, ADP, etc.) by storing the external\nprovider code, external ID, and object type.\n"
+    }
+  ],
+  "paths": {
+    "/v1/collections": {
+      "get": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "List collections",
+        "description": "Returns metadata about all collections for the account associated with the provided access token.",
+        "operationId": "listCollections",
+        "responses": {
+          "200": {
+            "description": "List of collections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCollectionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/collections/{collectionId}/fields": {
+      "get": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Retrieve field metadata for a collection",
+        "description": "Returns all field definitions for a collection, including field identifiers, names,\ntypes, write format hints, select options (for native selects), and linked collection IDs\n(for link-to-object fields). Use this endpoint to discover the schema before reading or writing records.\n",
+        "operationId": "listFields",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the collection"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of field definitions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Field"
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "example": {
+                  "data": [
+                    {
+                      "id": "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1",
+                      "name": "First Name",
+                      "readOnly": false,
+                      "type": "TEXT",
+                      "writeFormatHint": "plain_text"
+                    },
+                    {
+                      "id": "df14fac6-ce85-480b-a5a8-0e5b90471205",
+                      "name": "Last Name",
+                      "readOnly": false,
+                      "type": "TEXT",
+                      "writeFormatHint": "plain_text"
+                    },
+                    {
+                      "id": "199c7b23-5ba6-4cf4-a778-6da9394b7884",
+                      "name": "Email",
+                      "readOnly": false,
+                      "type": "EMAIL",
+                      "writeFormatHint": "email"
+                    },
+                    {
+                      "id": "f7958d78-9e4c-4d23-a16e-ac732636b281",
+                      "name": "Phone",
+                      "readOnly": false,
+                      "type": "PHONE",
+                      "writeFormatHint": "e164_phone"
+                    },
+                    {
+                      "id": "7064ba02-0ba2-48ca-9d0d-3698630b0050",
+                      "name": "Date of Birth",
+                      "readOnly": false,
+                      "type": "DATETIME",
+                      "writeFormatHint": "iso8601_datetime"
+                    },
+                    {
+                      "id": "39336d37-1d19-4b84-9bf9-6d8e88938558",
+                      "name": "Certifications",
+                      "readOnly": false,
+                      "type": "LINK_TO_ROLE",
+                      "writeFormatHint": "comma_separated_uuids",
+                      "linkedCollectionId": "7822e1fa-dfde-4090-bf1e-bb41a31c763f"
+                    },
+                    {
+                      "id": "e33d4a71-5140-4a30-afc7-567471a89c39",
+                      "name": "Assigned Facilities",
+                      "readOnly": false,
+                      "type": "LINK_TO_LOCATION",
+                      "writeFormatHint": "comma_separated_uuids",
+                      "linkedCollectionId": "b8e9e5a9-074d-4df2-a95a-4c8dbd5d8781"
+                    },
+                    {
+                      "id": "1d566c20-accd-450f-afad-8c572f176bd0",
+                      "name": "Employment Status",
+                      "readOnly": false,
+                      "type": "SINGLE_SELECT",
+                      "writeFormatHint": "single_uuid",
+                      "selectOptions": [
+                        {
+                          "id": "bb31a869-2e73-4468-ab94-73ea256e08a2",
+                          "name": "Full-Time"
+                        },
+                        {
+                          "id": "68ddbd25-b819-4362-add1-9c87c079515c",
+                          "name": "Part-Time"
+                        },
+                        {
+                          "id": "4bfabc6f-f512-4c48-849b-8c94b83c215e",
+                          "name": "Per Diem"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "5ef9a0a5-f7e5-42a7-af8c-927a9057c839",
+                      "name": "Specialties",
+                      "readOnly": false,
+                      "type": "MULTI_SELECT",
+                      "writeFormatHint": "comma_separated_uuids",
+                      "selectOptions": [
+                        {
+                          "id": "641367e5-0c24-4eb4-8b32-eda6a87540f3",
+                          "name": "ICU"
+                        },
+                        {
+                          "id": "89667f7f-cc87-4246-9f10-e0cfe13fdd8c",
+                          "name": "ER"
+                        },
+                        {
+                          "id": "4374192c-ece1-4475-9372-23dbe0f98527",
+                          "name": "Surgery"
+                        }
+                      ]
+                    },
+                    {
+                      "id": "0fe6e99f-8e3a-4f21-b315-3b149bcdf2f7",
+                      "name": "Created At",
+                      "readOnly": true,
+                      "type": "COMPUTED"
+                    },
+                    {
+                      "id": "a943302a-5b1e-4ba9-b4c0-728c8e7fe2bd",
+                      "name": "Home Address",
+                      "readOnly": false,
+                      "type": "ADDRESS",
+                      "writeFormatHint": "plain_text"
+                    }
+                  ],
+                  "error": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Collection not found"
+          }
+        }
+      }
+    },
+    "/v1/collections/{collectionId}/records": {
+      "get": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "List records in a collection",
+        "description": "Returns a paginated list of records for a collection. Each record is represented\nas a map of field UUIDs to values. Use the /fields endpoint first to get field metadata\n(names, types, write format hints) to interpret the data.\n\n**Filtering Support:**\nThis endpoint supports filtering via query parameters in the format `{fieldUUID}_{operator}={value}`.\n- Up to 10 filters per request with implicit AND logic (all filters must match)\n- Use the /fields endpoint to discover field UUIDs\n- See the API description above for detailed filtering documentation and examples\n\n**Supported Operators by Field Type:**\n- **TEXT**: `_is` (exact), `_contains` (partial match)\n- **NUMBER**: `_is`, `_gt`, `_gte`, `_lt`, `_lte`\n- **DATETIME**: `_is`, `_gt`, `_gte`, `_lt`, `_lte`\n- **BOOLEAN**: `_is`\n- **SINGLE_SELECT/MULTI_SELECT**: `_is`\n- **Default**: No suffix defaults to `_is` behavior\n\n**Filter Examples:**\n- Filter by email: `?{email-field-uuid}_is=john@example.com`\n- Filter by partial name: `?{name-field-uuid}_contains=john`\n- Filter by date range: `?{date-field-uuid}_gte=2025-01-01&{date-field-uuid}_lte=2025-12-31`\n- Filter by age range: `?{age-field-uuid}_gte=21&{age-field-uuid}_lte=65`\n- Multiple filters: `?{field1-uuid}_is=value1&{field2-uuid}_contains=value2`\n",
+        "operationId": "listRecords",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the collection"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": true,
+            "description": "Zero-based page index",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": true,
+            "description": "Number of records per page (maximum 50)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          },
+          {
+            "name": "enriched",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When `true`, each record's `metadata` object will include an `externalRecordMappings` array\ncontaining any external ID mappings linked to that record (e.g. from Bullhorn, ADP).\nIf no mappings exist the array will be empty. Has no effect on the `data` fields.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of records in the collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RecordData"
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "examples": {
+                  "standard": {
+                    "summary": "Standard response (enriched=false)",
+                    "value": {
+                      "data": [
+                        {
+                          "metadata": {
+                            "recordId": "550e8400-e29b-41d4-a716-446655440000"
+                          },
+                          "data": {
+                            "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+                            "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+                            "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com"
+                          }
+                        },
+                        {
+                          "metadata": {
+                            "recordId": "660e8400-e29b-41d4-a716-446655440001"
+                          },
+                          "data": {
+                            "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "John",
+                            "df14fac6-ce85-480b-a5a8-0e5b90471205": "Doe",
+                            "199c7b23-5ba6-4cf4-a778-6da9394b7884": "john.doe@hospital.com"
+                          }
+                        }
+                      ],
+                      "error": null
+                    }
+                  },
+                  "enriched": {
+                    "summary": "Enriched response with external ID mappings (enriched=true)",
+                    "value": {
+                      "data": [
+                        {
+                          "metadata": {
+                            "recordId": "550e8400-e29b-41d4-a716-446655440000",
+                            "externalRecordMappings": [
+                              {
+                                "providerCode": "BULLHORN",
+                                "externalId": "EXT-12345",
+                                "externalObjectType": "Candidate"
+                              }
+                            ]
+                          },
+                          "data": {
+                            "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+                            "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+                            "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com"
+                          }
+                        },
+                        {
+                          "metadata": {
+                            "recordId": "660e8400-e29b-41d4-a716-446655440001",
+                            "externalRecordMappings": []
+                          },
+                          "data": {
+                            "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "John",
+                            "df14fac6-ce85-480b-a5a8-0e5b90471205": "Doe",
+                            "199c7b23-5ba6-4cf4-a778-6da9394b7884": "john.doe@hospital.com"
+                          }
+                        }
+                      ],
+                      "error": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g., page size exceeds maximum)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Collection not found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Create a new record",
+        "description": "Creates a new record in the collection. The request body should contain a map\nof field UUIDs to string values. Use the /fields endpoint to discover field IDs\nand their expected write formats (writeFormatHint).\n",
+        "operationId": "createRecord",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the collection"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Record created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (validation error, invalid field values, etc.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Collection not found"
+          }
+        }
+      }
+    },
+    "/v1/collections/{collectionId}/records/{recordId}": {
+      "get": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Get a single record by ID",
+        "description": "Returns a single record identified by its UUID. The record is represented as\na map of field UUIDs to values. Use the /fields endpoint to get field metadata.\n",
+        "operationId": "getRecord",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the collection"
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the record"
+          },
+          {
+            "name": "enriched",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "When `true`, the `metadata` object will include an `externalRecordMappings` array\ncontaining any external ID mappings linked to this record (e.g. from Bullhorn, ADP).\nIf no mappings exist the array will be empty. Has no effect on the `data` fields.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RecordData"
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                },
+                "examples": {
+                  "standard": {
+                    "summary": "Standard response (enriched=false)",
+                    "value": {
+                      "data": {
+                        "metadata": {
+                          "recordId": "550e8400-e29b-41d4-a716-446655440000"
+                        },
+                        "data": {
+                          "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+                          "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+                          "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com",
+                          "f7958d78-9e4c-4d23-a16e-ac732636b281": "+14155551234"
+                        }
+                      },
+                      "error": null
+                    }
+                  },
+                  "enriched": {
+                    "summary": "Enriched response with external ID mappings (enriched=true)",
+                    "value": {
+                      "data": {
+                        "metadata": {
+                          "recordId": "550e8400-e29b-41d4-a716-446655440000",
+                          "externalRecordMappings": [
+                            {
+                              "providerCode": "BULLHORN",
+                              "externalId": "EXT-12345",
+                              "externalObjectType": "Candidate"
+                            }
+                          ]
+                        },
+                        "data": {
+                          "c5a8e667-fe00-4c18-a559-84bfdbf7e8d1": "Sarah",
+                          "df14fac6-ce85-480b-a5a8-0e5b90471205": "Johnson",
+                          "199c7b23-5ba6-4cf4-a778-6da9394b7884": "sarah.johnson@hospital.com",
+                          "f7958d78-9e4c-4d23-a16e-ac732636b281": "+14155551234"
+                        }
+                      },
+                      "error": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Record or collection not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Collections (Unified API)"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Update an existing record",
+        "description": "Updates an existing record. The request body should contain a map of field UUIDs\nto string values for the fields you want to update. Only include fields that need\nto be changed. Use the /fields endpoint to discover field IDs and write formats.\n",
+        "operationId": "updateRecord",
+        "parameters": [
+          {
+            "name": "collectionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the collection"
+          },
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Unique ID of the record to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericWriteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Record updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/RecordData"
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (validation error, invalid field values, etc.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Record or collection not found"
+          }
+        }
+      }
+    },
+    "/v1/timezones": {
+      "get": {
+        "tags": [
+          "Utilities"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Get supported timezones",
+        "description": "Returns a list of all supported timezone identifiers, sorted alphabetically.",
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of supported timezones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimezonesList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/documents": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Upload a document",
+        "description": "Uploads a document file with optional metadata for the authenticated account.\n\n**Important**: This endpoint requires `multipart/form-data` content type for file upload.\n\n**Limits**:\n- Maximum file size: 100MB\n- Maximum roles per document: 10\n\nThe request consists of two parts:\n- `file`: The document file to upload (required)\n- `request`: JSON metadata for the document (optional)\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The document file to upload (max 100MB)"
+                  },
+                  "request": {
+                    "$ref": "#/components/schemas/CreateDocumentRequest"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/CreateDocumentResponse"
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - file size exceeds 100MB or more than 10 roles assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardErrorResponse"
+                },
+                "examples": {
+                  "maxFileSize": {
+                    "summary": "File size exceeded",
+                    "value": {
+                      "data": null,
+                      "error": {
+                        "message": "File size of 150MB exceeds maximum allowed size of 100MB",
+                        "code": "MAX_FILE_SIZE_EXCEEDED"
+                      }
+                    }
+                  },
+                  "maxRoles": {
+                    "summary": "Too many roles",
+                    "value": {
+                      "data": null,
+                      "error": {
+                        "message": "Cannot assign more than 10 roles to a document",
+                        "code": "MAX_ROLES_PER_DOCUMENT_EXCEEDED"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/mappings": {
+      "get": {
+        "tags": [
+          "Mappings"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "List all mappings for a record",
+        "description": "Returns all external system mappings for a specific Teambridge record.\nMappings link records to external system entities.\n",
+        "operationId": "listMappings",
+        "parameters": [
+          {
+            "name": "recordId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "UUID of the Teambridge record to get mappings for"
+          }
+        ],
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of mappings for the record",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MappingDto"
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing or invalid recordId"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Mappings"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Create a new mapping",
+        "description": "Creates a new mapping linking a Teambridge record to an external system entity.\nEach mapping associates a record with an external provider, external ID, and object type.\n",
+        "operationId": "createMapping",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMappingRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MappingDto"
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid data or mapping already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/mappings/{mappingId}": {
+      "put": {
+        "tags": [
+          "Mappings"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Update an existing mapping",
+        "description": "Updates the external ID for an existing mapping. This is useful when the\nexternal system ID changes but the mapping relationship should be preserved.\n",
+        "operationId": "updateMapping",
+        "parameters": [
+          {
+            "name": "mappingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "UUID of the mapping to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMappingRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mapping updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/MappingDto"
+                    },
+                    "error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - invalid data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Mapping not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Mappings"
+        ],
+        "servers": [
+          {
+            "url": "https://open-api.teambridge.com"
+          }
+        ],
+        "summary": "Delete a mapping",
+        "description": "Deletes an external system mapping. This removes the link between a Teambridge\nrecord and an external system entity without affecting the underlying record.\n",
+        "operationId": "deleteMapping",
+        "parameters": [
+          {
+            "name": "mappingId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "UUID of the mapping to delete"
+          }
+        ],
+        "security": [
+          {
+            "OAuth2": [
+              "write"
+            ]
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Mapping deleted successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Mapping not found"
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "eventNotification": {
+      "post": {
+        "summary": "Webhooks",
+        "description": "Subscribe to events in Teambridge to receive real-time notifications when your data changes.\n\nAccount owners: configure your webhook subscriptions inside Settings > Account | Outbound webhooks\n\nChoose a publicly-accessible *HTTPS* endpoint where we should send events. Select the events to which you\nwould like to subscribe.\n\nWhen you save the webhook subscription, a modal will show you your HMAC secret. Store this somewhere safe.\nThe secret key lets you validate that events published to your endpoint come from us. If you lose your secret,\nyou can rotate it and receive a new one.\n\n## Security\n\nAll webhook requests include HMAC-SHA256 signatures for verification. The signature lets you know that this event came from Teambridge.\n\n**Request Headers:**\n- `X-Webhook-Signature`: HMAC-SHA256 signature with `sha256=` prefix (e.g., `sha256=abc123...`)\n- `X-Webhook-Timestamp`: Unix timestamp in seconds (when the webhook was sent)\n- `Content-Type`: application/json\n\n**Signature Verification:**\n\n1. Extract the `X-Webhook-Timestamp` and `X-Webhook-Signature` headers from the request\n2. Strip the `sha256=` prefix from the signature header\n3. Construct the signed payload: `{timestamp}.{request_body}` (use the raw request body string, not parsed JSON)\n4. Compute HMAC-SHA256 of the signed payload using your webhook secret\n5. Compare the computed signature with the provided signature using constant-time comparison\n6. Reject requests with timestamps more than 5 minutes old (prevents replay attacks)\n\n**Example Verification (Node.js):**\n\nFirst, check that the timestamp is recent (within 5 minutes):\n\n```javascript\nconst timestamp = request.headers['x-webhook-timestamp'];\nconst currentTime = Math.floor(Date.now() / 1000);\n\nif (Math.abs(currentTime - timestamp) > 300) {\n  throw new Error('Webhook timestamp too old');\n}\n```\n\nThen, compute the expected signature and compare. Note that you must use the raw request body string, not parsed JSON:\n\n```javascript\nconst crypto = require('crypto');\nconst signatureHeader = request.headers['x-webhook-signature'];\nconst signature = signatureHeader.replace('sha256=', '');\nconst rawBody = request.rawBody;\n\nconst signedPayload = `${timestamp}.${rawBody}`;\nconst expectedSignature = crypto\n  .createHmac('sha256', secret)\n  .update(signedPayload)\n  .digest('hex');\n\nif (!crypto.timingSafeEqual(\n  Buffer.from(signature),\n  Buffer.from(expectedSignature)\n)) {\n  throw new Error('Invalid webhook signature');\n}\n```\n\n## Secret Management\n\n- All webhook subscriptions for an account share the same secret key\n- Secrets are only shown once when first created or rotated\n- During rotation, update your verification code with the new secret\n- Store secrets securely (environment variables, secret managers)\n\n## Consuming Webhooks\n\n**Best Practices:**\n1. **Respond quickly** - Return 200 OK within 5 seconds to avoid retries\n2. **Process asynchronously** - Queue the webhook for background processing\n3. **Verify signatures** - Always validate the HMAC signature before processing\n4. **Check timestamps** - Reject old webhooks to prevent replay attacks\n5. **Handle idempotently** - Use `event_id` to deduplicate events\n6. **Return appropriate status codes**:\n   - `200 OK` - Webhook received and verified successfully\n   - `400 Bad Request` - Invalid signature or expired timestamp\n   - `500 Internal Server Error` - Processing error (will trigger retry)\n\n## Payload Versioning\n\nThe webhook payload format is versioned. The current version is `1.0` (see the `version` field in the payload).\n\n- Breaking changes will increment the version number\n- Non-breaking additions (new optional fields) do not change the version\n- Parse the `version` field to handle different payload formats\n- Version changes will be announced in advance via release notes\n\n## Retry Behavior\n\nIf your endpoint does not return `200 OK`, Teambridge will retry the webhook\n- Maximum retry attempts: 5\n- Webhooks are marked as failed after all retries are exhausted\n- Contact support to replay failed webhooks if needed\n",
+        "security": [
+          {
+            "WebhookSignature": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version",
+                  "event_type",
+                  "event_id",
+                  "timestamp",
+                  "account_id",
+                  "data"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "string",
+                    "description": "Webhook payload version (current version is \"1.0\")",
+                    "example": "1.0"
+                  },
+                  "event_type": {
+                    "type": "string",
+                    "description": "The type of event that triggered the webhook. Event types follow snake_case naming\nconvention (e.g., shift_created, user_updated, location_deleted).\n",
+                    "example": "shift_updated"
+                  },
+                  "event_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Unique identifier for this webhook event. Use this for idempotent processing\nto prevent duplicate handling of the same event.\n",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 timestamp when the event occurred",
+                    "example": "2025-06-05T14:30:00Z"
+                  },
+                  "account_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "The account ID where the event occurred",
+                    "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "action",
+                      "collection_id",
+                      "record_id"
+                    ],
+                    "properties": {
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "created",
+                          "updated",
+                          "deleted"
+                        ],
+                        "description": "The action that was performed on the record",
+                        "example": "created"
+                      },
+                      "collection_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "The ID of the collection where the record exists. Use this with\nGET /v1/collections/{collectionId}/records/{recordId} to fetch full record details.\n",
+                        "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                      },
+                      "record_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "The ID of the affected record. Use this with the Collections API to retrieve\nthe full record data if needed.\n",
+                        "example": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                      },
+                      "actor": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "description": "Information about the user who performed the action. May be null for\nsystem-initiated actions.\n",
+                        "properties": {
+                          "user_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "The UUID of the user who performed the action",
+                            "example": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "The display name of the user",
+                            "example": "Ada Lovelace"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "shiftUpdated": {
+                  "summary": "Shift updated by a manager",
+                  "value": {
+                    "version": "1.0",
+                    "event_type": "shift_updated",
+                    "event_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "timestamp": "2025-06-05T14:30:00Z",
+                    "account_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                    "data": {
+                      "action": "updated",
+                      "collection_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+                      "record_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                      "actor": {
+                        "user_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+                        "name": "Sarah Sherman"
+                      }
+                    }
+                  }
+                },
+                "userCreatedByAutomation": {
+                  "summary": "User created by automation (no actor)",
+                  "value": {
+                    "version": "1.0",
+                    "event_type": "user_created",
+                    "event_id": "660e8400-e29b-41d4-a716-446655440001",
+                    "timestamp": "2025-06-05T15:45:00Z",
+                    "account_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                    "data": {
+                      "action": "created",
+                      "collection_id": "d4e5f6a7-b8c9-0123-def1-234567890123",
+                      "record_id": "e5f6a7b8-c9d0-1234-ef12-345678901234",
+                      "actor": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook received and verified successfully"
+          },
+          "400": {
+            "description": "Invalid signature or expired timestamp"
+          },
+          "500": {
+            "description": "Server error (webhook will be retried)"
+          }
+        }
+      }
+    }
+  }
+}
