@@ -157,10 +157,15 @@ export async function onboardNurseToFacility(
     );
   } catch (err) {
     await db.delete(teambridgeNurseFacilityInvites).where(where);
+    const url = new URL("/team/invite", facility.karibuBaseUrl).toString();
+    const tokenHint = `${facility.karibuApiKey.slice(0, 6)}…${facility.karibuApiKey.slice(-4)}`;
     if (err instanceof KaribuApiError) {
-      log.error({ ...ctx, status: err.status, body: err.body }, "Karibu invite failed");
+      log.error(
+        { ...ctx, status: err.status, body: err.body, url, tokenHint },
+        "Karibu invite failed",
+      );
     } else {
-      log.error({ ...ctx, err }, "nurse onboarding failed");
+      log.error({ ...ctx, err, url, tokenHint }, "nurse onboarding failed");
     }
     throw err;
   }
