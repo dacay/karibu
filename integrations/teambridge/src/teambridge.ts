@@ -193,6 +193,41 @@ export async function deleteRecords(opts: {
   }
 }
 
+// Deactivates a task template via the Teambridge "web" API. Required step
+// before deletion — DELETE /tasks/template/{id} on an active template is rejected.
+// PUT with no body. Uses the static web bearer (same as createTaskTemplate).
+export async function deactivateTaskTemplate(templateId: string): Promise<void> {
+  const res = await fetch(
+    `${config.teambridge.web.apiBase}/tasks/template/${templateId}/inactive`,
+    {
+      method: "PUT",
+      headers: { authorization: `Bearer ${config.teambridge.web.token}` },
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Deactivate task template ${templateId} failed: ${res.status} ${await res.text()}`,
+    );
+  }
+}
+
+// Deletes a (previously deactivated) task template via the Teambridge "web" API.
+// DELETE with no body. Uses the static web bearer.
+export async function deleteTaskTemplate(templateId: string): Promise<void> {
+  const res = await fetch(
+    `${config.teambridge.web.apiBase}/tasks/template/${templateId}`,
+    {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${config.teambridge.web.token}` },
+    },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Delete task template ${templateId} failed: ${res.status} ${await res.text()}`,
+    );
+  }
+}
+
 // Writes a single field on a shift record. Used to mark "Karibu Completed" once
 // the nurse completes their verification microlearning, and to auto-populate
 // it on every subsequent shift assigned to the same nurse at the same facility.

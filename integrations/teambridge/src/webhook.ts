@@ -4,16 +4,27 @@ import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { verifyWebhook } from "./signature.js";
 import { isDuplicateEvent, diffAndUpdateShift } from "./state.js";
-import { getShift, extractAssigneeIds, setShiftField, type ShiftRecord } from "./teambridge.js";
+import {
+  getShift,
+  extractAssigneeIds,
+  setShiftField,
+  deleteRecords,
+  deactivateTaskTemplate,
+  deleteTaskTemplate,
+  type ShiftRecord,
+} from "./teambridge.js";
 import { getFacility } from "./facilities.js";
 import { getSchema, fieldName } from "./schema.js";
 import { onboardNurseToFacility } from "./onboarding.js";
 import { db } from "./db/client.js";
-import { teambridgeNurseFacilityVerifications } from "./db/schema.js";
+import {
+  teambridgeNurseFacilityInvites,
+  teambridgeNurseFacilityVerifications,
+} from "./db/schema.js";
 
 const log = logger.child({ module: "webhook" });
 
-const HANDLED_EVENT_TYPES = new Set(["shift_created", "shift_updated"]);
+const HANDLED_EVENT_TYPES = new Set(["shift_created", "shift_updated", "shift_deleted"]);
 
 interface WebhookEvent {
   version: string;
@@ -72,10 +83,12 @@ export async function handleWebhook(c: Context): Promise<Response> {
   );
 
   // Process asynchronously so we return 200 within 5s. Errors are logged, not retried —
-  // Teambridge only retries on non-2xx. Dedup lives inside processShiftUpdate so
-  // events for untracked facilities never write a row.
-  processShiftUpdate(event).catch((err) =>
-    log.error({ ...baseCtx, err }, "shift_updated processing failed"),
+  // Teambridge only retries on non-2xx. Dedup lives inside each processor so events
+  // for untracked shifts never write a row.
+  const processor =
+    event.event_type === "shift_deleted" ? processShiftDeleted : processShiftUpdate;
+  processor(event).catch((err) =>
+    log.error({ ...baseCtx, err }, `${event.event_type} processing failed`),
   );
 
   return c.json({ ok: true });
@@ -181,4 +194,110 @@ function extractFacilityId(shift: ShiftRecord): string | null {
   const v = shift.fields[getSchema().locationFieldId];
   if (typeof v === "string") return v;
   return null;
+}
+
+async function processShiftDeleted(event: WebhookEvent): Promise<void> {
+  const { record_id } = event.data;
+  const ctx = { eventId: event.event_id, recordId: record_id };
+
+  const duplicate = await isDuplicateEvent({
+    eventId: event.event_id,
+    eventType: event.event_type,
+    accountId: event.account_id,
+    recordId: record_id,
+    actorUserId: event.data.actor?.user_id ?? null,
+    actorName: event.data.actor?.name ?? null,
+  });
+  if (duplicate) {
+    log.info(ctx, "ignored: duplicate event_id");
+    return;
+  }
+
+  // We only act when the deleted shift is the one we used to trigger onboarding.
+  // Other shift deletions don't touch any of our state.
+  const [invite] = await db
+    .select({
+      nurseId: teambridgeNurseFacilityInvites.nurseId,
+      facilityId: teambridgeNurseFacilityInvites.facilityId,
+      taskRecordId: teambridgeNurseFacilityInvites.taskRecordId,
+      taskTemplateId: teambridgeNurseFacilityInvites.taskTemplateId,
+      accountId: teambridgeNurseFacilityInvites.accountId,
+    })
+    .from(teambridgeNurseFacilityInvites)
+    .where(eq(teambridgeNurseFacilityInvites.firstShiftId, record_id))
+    .limit(1);
+
+  if (!invite) {
+    log.info(ctx, "ignored: deleted shift not tracked as a first shift");
+    return;
+  }
+
+  const inviteCtx = {
+    ...ctx,
+    nurseId: invite.nurseId,
+    facilityId: invite.facilityId,
+  };
+
+  const { tasksCollectionId } = getSchema();
+
+  // Best-effort cleanup: each step logs on failure but does not abort the rest.
+  // Row deletion is intentionally last — a partial Teambridge-side failure leaves
+  // dangling artifacts that can be cleaned up manually, but the row removal still
+  // unblocks future re-onboarding for this (nurse, facility) pair.
+  if (invite.taskRecordId && invite.accountId) {
+    try {
+      await deleteRecords({
+        accountId: invite.accountId,
+        collectionId: tasksCollectionId,
+        recordIds: [invite.taskRecordId],
+      });
+      log.info(
+        { ...inviteCtx, taskRecordId: invite.taskRecordId },
+        "deleted task instance for deleted shift",
+      );
+    } catch (err) {
+      log.error(
+        { ...inviteCtx, taskRecordId: invite.taskRecordId, err },
+        "failed to delete task instance",
+      );
+    }
+  }
+
+  if (invite.taskTemplateId) {
+    try {
+      await deactivateTaskTemplate(invite.taskTemplateId);
+      log.info(
+        { ...inviteCtx, taskTemplateId: invite.taskTemplateId },
+        "deactivated task template",
+      );
+    } catch (err) {
+      log.error(
+        { ...inviteCtx, taskTemplateId: invite.taskTemplateId, err },
+        "failed to deactivate task template",
+      );
+    }
+
+    try {
+      await deleteTaskTemplate(invite.taskTemplateId);
+      log.info(
+        { ...inviteCtx, taskTemplateId: invite.taskTemplateId },
+        "deleted task template",
+      );
+    } catch (err) {
+      log.error(
+        { ...inviteCtx, taskTemplateId: invite.taskTemplateId, err },
+        "failed to delete task template",
+      );
+    }
+  }
+
+  await db
+    .delete(teambridgeNurseFacilityInvites)
+    .where(
+      and(
+        eq(teambridgeNurseFacilityInvites.nurseId, invite.nurseId),
+        eq(teambridgeNurseFacilityInvites.facilityId, invite.facilityId),
+      ),
+    );
+  log.info(inviteCtx, "deleted invite row — pair will re-onboard on next shift");
 }

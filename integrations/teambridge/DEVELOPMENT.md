@@ -8,6 +8,7 @@ End-to-end loop:
 2. The nurse opens the link, completes a verification microlearning in Karibu. Karibu fires an outbound webhook back at us (`POST /webhooks/karibu/ml-completed`).
 3. We mark the shift's "Karibu Completed" field via the Open API, persist the verification, and delete the now-redundant Teambridge task.
 4. Every subsequent shift the same nurse is assigned to at the same facility is auto-marked "Karibu Completed" by the shift_updated handler — no extra ML completion required.
+5. If Teambridge sends `shift_deleted` for a shift that triggered onboarding (i.e. it matches an invite row's `first_shift_id`), we tear down the Teambridge-side artifacts (task instance + task template) and drop the invite row so the next `shift_created`/`shift_updated` for the same (nurse, facility) pair re-runs onboarding cleanly.
 
 ## Why a separate package
 
@@ -67,9 +68,14 @@ facilities.ts     Loads facility-id → Karibu org mapping JSON at boot, resolve
                   reverse lookup from inbound Karibu webhooks.
 signature.ts      HMAC SHA-256 webhook verification (Teambridge inbound only).
 state.ts          Postgres-backed dedup + shift snapshot diffing
-webhook.ts        Teambridge webhook handler: verify → dedup → fetch shift →
-                  diff → onboard new (nurse, facility) pairs → auto-apply
-                  Karibu Completed for any already-verified pair.
+webhook.ts        Teambridge webhook handler. Verify + parse + dedup, then
+                  branch on event type:
+                    • shift_created/shift_updated: fetch shift → diff →
+                      onboard new (nurse, facility) pairs → auto-apply
+                      Karibu Completed for any already-verified pair.
+                    • shift_deleted: if the deleted shift matches an invite
+                      row's first_shift_id, tear down the task instance +
+                      task template and drop the invite row.
 logger.ts         pino, pretty in dev
 db/
   schema.ts     Drizzle schema (pgSchema('integrations'), teambridge_* tables)
@@ -118,8 +124,10 @@ Pick which file to load via `FACILITIES_FILE`. Boot throws on any missing field 
 
 1. Verify HMAC (or skip if disabled) → 400 on mismatch.
 2. Parse JSON → 400 on invalid.
-3. If `event_type` is not in `HANDLED_EVENT_TYPES` (currently `shift_created`, `shift_updated`) → 200 ignored.
-4. Return 200 and process asynchronously (Teambridge expects 2xx in <5s):
+3. If `event_type` is not in `HANDLED_EVENT_TYPES` (currently `shift_created`, `shift_updated`, `shift_deleted`) → 200 ignored.
+4. Return 200 and process asynchronously (Teambridge expects 2xx in <5s).
+
+**`shift_created` / `shift_updated`:**
    - GET shift record by `record_id` via Open API.
    - Resolve facility via location field; ignore if untracked.
    - Dedup against `teambridge_events` (atomic insert).
@@ -127,6 +135,13 @@ Pick which file to load via `FACILITIES_FILE`. Boot throws on any missing field 
    - For each assignee:
      - **Onboard** if no `(nurse, facility)` row in `teambridge_nurse_facility_invites` → invite to Karibu, mint task template (web API), assign template to nurse (web API), persist `karibu_user_id`, `account_id`, `first_shift_id`, `task_record_id` on the row.
      - **Auto-apply** Karibu Completed on this shift if a `(nurse, facility)` row exists in `teambridge_nurse_facility_verifications` (the nurse already verified at this facility — every new shift inherits the field).
+
+**`shift_deleted`:** look up an invite row by `first_shift_id = record_id`. If none, the deleted shift isn't tracked as anyone's first shift — log "ignored: deleted shift not tracked as a first shift" and stop. If matched, tear down in this order, each call best-effort with errors logged:
+   - Delete the assigned task instance (web API `POST /collections/delete_records`).
+   - Deactivate the task template (`PUT /tasks/template/{id}/inactive`, web API, no body) and then delete it (`DELETE /tasks/template/{id}`, web API, no body).
+   - Delete the invite row last, so a partial Teambridge-side failure still unblocks future re-onboarding for the (nurse, facility) pair.
+
+The next `shift_created`/`shift_updated` for the same (nurse, facility) pair re-runs full onboarding from scratch — `/team/invite` is idempotent and returns the same Karibu sign-in link, so the nurse-facing URL is preserved across the re-onboarding.
 
 ### Karibu → integration: `POST /webhooks/karibu/ml-completed`
 
@@ -168,7 +183,7 @@ State lives in the **same Postgres instance as `apps/backend`**, in a separate `
 
 - `integrations.teambridge_events` — one row per accepted webhook. Columns: `event_id` (PK), `event_type`, `account_id`, `record_id`, `actor_user_id`, `actor_name`, `received_at`. Used for dedup (PK conflict) and as a lightweight audit trail.
 - `integrations.teambridge_shift_snapshots` — one row per shift, latest state only. Columns: `record_id` (PK), `fields` (jsonb), `updated_at`. Used as the diff baseline.
-- `integrations.teambridge_nurse_facility_invites` — one row per (nurse, facility) pair we've ever onboarded. PK `(nurse_id, facility_id)`. Columns: `karibu_invited_at`, `task_created_at`, `task_template_id` (server-assigned), `task_template_display_id` (`task.template.<uuid>` we mint), `task_record_id` (the assigned task instance), `karibu_user_id`, `first_shift_id` (the shift whose webhook triggered onboarding — what gets marked Completed when verification finishes), `account_id` (captured for the web-API delete call), `created_at`. Acts as the early-skip gate in `onboardNurseToFacility`.
+- `integrations.teambridge_nurse_facility_invites` — one row per (nurse, facility) pair we've ever onboarded. PK `(nurse_id, facility_id)`. Columns: `karibu_invited_at`, `task_created_at`, `task_template_id` (server-assigned), `task_template_display_id` (`task.template.<uuid>` we mint), `task_record_id` (the assigned task instance), `karibu_user_id`, `first_shift_id` (the shift whose webhook triggered onboarding — what gets marked Completed when verification finishes), `account_id` (captured for the web-API delete call), `created_at`. Acts as the early-skip gate in `onboardNurseToFacility`. Rows are written on first-time onboarding and deleted only when a `shift_deleted` webhook arrives for the originating `first_shift_id` (after the Teambridge task instance + template are torn down) — at which point a future shift for the same (nurse, facility) pair will trigger fresh onboarding.
 - `integrations.teambridge_nurse_facility_verifications` — one row per `(nurse, facility, microlearning_id)` ML completion received from Karibu. Columns: `karibu_user_id`, `verified_at`, `received_payload jsonb`. Presence of any row for `(nurse, facility)` causes `processShiftUpdate` to auto-apply Karibu Completed on every subsequent shift assigned to that nurse at that facility.
 
 **Coexistence with future integrations.** `drizzle.config.ts` scopes drizzle-kit to *this* integration only via `tablesFilter: ['teambridge_*']` and stores migration history in its own table `integrations.__drizzle_migrations_teambridge`. A future integration in `integrations/<name>/` should mirror this pattern with its own table prefix and tracking table — both can write into the shared `integrations` schema without stepping on each other's migrations. The first migration uses `CREATE SCHEMA IF NOT EXISTS "integrations"` so whichever integration migrates first wins.
@@ -183,7 +198,7 @@ State lives in the **same Postgres instance as `apps/backend`**, in a separate `
 
 - Switch from `db:push` to `db:generate` + `db:migrate` before this service receives prod webhooks (see "Data layer").
 - HMAC the inbound Karibu webhook (currently optional bearer only — `KARIBU_WEBHOOK_BEARER`).
-- Re-onboarding lifecycle: today the `(nurse, facility)` invite row is "ever onboarded" forever. If a nurse never completes the ML and the original task is dismissed, no re-trigger fires. Consider gating early-skip on verification state, and reacting to assignee-removed events to clean up stale tasks.
+- Re-onboarding lifecycle: today the `(nurse, facility)` invite row is cleared only on `shift_deleted` of the originating first shift. If a nurse never completes the ML and the originating shift is left in place, no re-trigger fires. Consider gating early-skip on verification state, and reacting to assignee-removed events to clean up stale tasks.
 - Real facility mapping (sandbox JSON still has `REPLACE_ME_WITH_KARIBU_ORG_UUID`).
 - Linked-record name resolution (Assignee, Location, Shift Group come back as raw UUIDs in shift payloads — diff logs would read better with names).
 - Vercel/Railway: configure independent deploy projects with Ignored Build Step path filters.
@@ -192,7 +207,7 @@ State lives in the **same Postgres instance as `apps/backend`**, in a separate `
 
 Teambridge:
 - Open API (OAuth bearer): `GET /v1/collections`, `GET /v1/collections/{id}/fields`, `GET /v1/collections/{id}/records[/{recordId}]`, `PUT /v1/collections/{id}/records/{recordId}` (note: PUT, not PATCH — Teambridge's `updateRecord` is partial-update under PUT).
-- Web API (static bearer at `api.teambridge.com`): `POST /tasks/template`, `POST /collections/v2/create_record`, `POST /collections/delete_records`. None of these are documented in the openapi.json bundled in this repo.
+- Web API (static bearer at `api.teambridge.com`): `POST /tasks/template`, `PUT /tasks/template/{id}/inactive` (no body), `DELETE /tasks/template/{id}` (no body), `POST /collections/v2/create_record`, `POST /collections/delete_records`. None of these are documented in the openapi.json bundled in this repo.
 
 Karibu backend (consumed via `karibuFetch`, scoped per facility): `POST /team/invite`. Response shape: `{ invited: { email, userId, link }[], alreadyExists: { email, userId, link }[], failed: string[] }`. Both arrays carry sign-in links — the integration reads `invited[0] ?? alreadyExists[0]` so it doesn't care whether the user was just created or pre-existing.
 
