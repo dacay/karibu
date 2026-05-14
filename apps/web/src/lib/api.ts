@@ -185,6 +185,7 @@ export interface Microlearning {
   sequenceId: string | null;
   position: number | null;
   imageS3Key: string | null;
+  imageUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -7,6 +7,7 @@ import {
   downloadFromAssetsBucket,
   buildMlImageKey,
   buildOrgLogoKey,
+  invalidateCloudFrontPaths,
 } from './s3.js';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
@@ -154,10 +155,13 @@ export async function generateMlImage(mlId: string): Promise<void> {
     await uploadToAssetsBucket(s3Key, imageBuffer, 'image/png');
 
     // Update the ML record
+    const imageUpdatedAt = new Date();
     await db
       .update(microlearnings)
-      .set({ imageS3Key: s3Key })
+      .set({ imageS3Key: s3Key, imageUpdatedAt })
       .where(eq(microlearnings.id, mlId));
+
+    await invalidateCloudFrontPaths([s3Key]);
 
     // Notify connected learners so their feed cards swap in the new image
     broadcastFeedUpdate(ml.organizationId);

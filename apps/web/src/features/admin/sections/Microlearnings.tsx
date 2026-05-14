@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, Fragment } from "react";
+import { useState, useRef, Fragment, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import {
@@ -756,6 +756,8 @@ export function MicrolearningsSection() {
   // version timestamps to bust the image cache (S3 key is stable across regens).
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
   const [imageVersions, setImageVersions] = useState<Map<string, number>>(new Map());
+  // Track the imageUpdatedAt seen when regeneration started so we can detect the change.
+  const imageUpdatedAtRef = useRef<Map<string, string | null>>(new Map());
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -764,6 +766,36 @@ export function MicrolearningsSection() {
     queryFn: () => api.microlearnings.list(),
     refetchInterval: regeneratingIds.size > 0 ? 5_000 : false,
   });
+
+  // When polling returns updated data, check if imageUpdatedAt changed for any
+  // in-flight regeneration. If it did, the new image is in S3 and CloudFront is
+  // already invalidated — bust the browser cache and stop polling for that ML.
+  useEffect(() => {
+    if (regeneratingIds.size === 0 || !mlQuery.data) return;
+    const finished: string[] = [];
+    for (const id of regeneratingIds) {
+      const ml = mlQuery.data.microlearnings.find((m) => m.id === id);
+      if (!ml) continue;
+      const prev = imageUpdatedAtRef.current.get(id);
+      if (ml.imageUpdatedAt && ml.imageUpdatedAt !== prev) {
+        finished.push(id);
+      }
+    }
+    if (finished.length === 0) return;
+    setRegeneratingIds((prev) => {
+      const next = new Set(prev);
+      finished.forEach((id) => next.delete(id));
+      return next;
+    });
+    setImageVersions((prev) => {
+      const next = new Map(prev);
+      finished.forEach((id) => {
+        const ml = mlQuery.data!.microlearnings.find((m) => m.id === id);
+        next.set(id, new Date(ml!.imageUpdatedAt!).getTime());
+      });
+      return next;
+    });
+  }, [mlQuery.data, regeneratingIds]);
   const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.sequences.list() });
   const dnaQuery = useQuery({ queryKey: ["dna"], queryFn: () => api.dna.list() });
   const patternsQuery = useQuery({ queryKey: ["patterns"], queryFn: () => api.patterns.list() });
@@ -840,17 +872,10 @@ export function MicrolearningsSection() {
   const regenerateImageMutation = useMutation({
     mutationFn: (id: string) => api.microlearnings.regenerateImage(id),
     onMutate: (id) => {
+      // Record the current imageUpdatedAt so the effect can detect when it changes.
+      const current = mlQuery.data?.microlearnings.find((m) => m.id === id);
+      imageUpdatedAtRef.current.set(id, current?.imageUpdatedAt ?? null);
       setRegeneratingIds((prev) => new Set(prev).add(id));
-      // Gemini typically finishes within ~25s — stop polling and bust the
-      // image cache at that point so the browser fetches the new object.
-      setTimeout(() => {
-        setRegeneratingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        setImageVersions((prev) => new Map(prev).set(id, Date.now()));
-      }, 25_000);
     },
   });
 
