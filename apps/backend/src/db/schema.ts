@@ -123,6 +123,7 @@ export const microlearnings = pgTable('microlearnings', {
   // Per-ML, configured via SQL or `tsx src/scripts/set-ml-completion-webhook.ts`.
   // Null = no webhook. Fire-and-forget; failures are logged, never raised.
   completionWebhookUrl: text('completion_webhook_url'),
+  confettiEnabled: boolean('confetti_enabled').notNull().default(false),
   ...timestamps,
 });
 

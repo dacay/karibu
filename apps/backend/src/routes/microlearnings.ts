@@ -455,6 +455,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
     avatarId: string;
     sequenceId?: string | null;
     position?: number | null;
+    confettiEnabled?: boolean;
   }>();
 
   if (!body.title?.trim()) {
@@ -482,6 +483,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
       avatarId: body.avatarId ?? null,
       sequenceId: body.sequenceId ?? null,
       position: body.position ?? null,
+      confettiEnabled: body.confettiEnabled ?? false,
     })
     .returning();
 
@@ -512,6 +514,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
     avatarId?: string | null;
     sequenceId?: string | null;
     position?: number | null;
+    confettiEnabled?: boolean;
   }>();
 
   const [existing] = await db
@@ -533,6 +536,7 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
   if ('avatarId' in body) updates.avatarId = body.avatarId ?? null;
   if ('sequenceId' in body) updates.sequenceId = body.sequenceId ?? null;
   if ('position' in body) updates.position = body.position ?? null;
+  if ('confettiEnabled' in body) updates.confettiEnabled = body.confettiEnabled ?? false;
 
   const [updated] = await db
     .update(microlearnings)

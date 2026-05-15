@@ -144,12 +144,14 @@ export default function MicrolearningChatPage() {
 
   const handleComplete = useCallback(() => {
     setIsCompleted(true);
-    // fireConfetti();
+    if (mlData?.microlearning.confettiEnabled) {
+      fireConfetti();
+    }
     queryClient.invalidateQueries({ queryKey: ["ml", id] });
     queryClient.invalidateQueries({ queryKey: ["microlearnings", "my"] });
     queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
     queryClient.invalidateQueries({ queryKey: ["chat", "ml", id] });
-  }, [queryClient, id, fireConfetti]);
+  }, [queryClient, id, fireConfetti, mlData?.microlearning.confettiEnabled]);
 
   if (authLoading || mlLoading || sessionLoading) {
     return (

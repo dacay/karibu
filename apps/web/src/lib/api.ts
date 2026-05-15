@@ -185,6 +185,7 @@ export interface Microlearning {
   sequenceId: string | null;
   position: number | null;
   imageS3Key: string | null;
+  confettiEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -509,6 +510,7 @@ export const api = {
       avatarId?: string | null;
       sequenceId?: string | null;
       position?: number | null;
+      confettiEnabled?: boolean;
     }) =>
       request<{ microlearning: Microlearning }>("/microlearnings", {
         method: "POST",
@@ -523,6 +525,7 @@ export const api = {
       avatarId?: string | null;
       sequenceId?: string | null;
       position?: number | null;
+      confettiEnabled?: boolean;
     }) =>
       request<{ microlearning: Microlearning }>(`/microlearnings/${id}`, {
         method: "PATCH",
