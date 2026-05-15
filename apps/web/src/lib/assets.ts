@@ -19,3 +19,15 @@ export function getLogoUrl(subdomain: string, variant: "light" | "dark"): string
 
   return `${CDN_BASE}/${key}`;
 }
+
+/**
+ * Build a versioned CDN URL. The ?v= query param ensures the URL changes
+ * whenever the underlying image is replaced, busting browser and CloudFront
+ * caches without invalidation. Pair with immutable Cache-Control on S3.
+ */
+export function getVersionedAssetUrl(s3Key: string, version: Date | string | null | undefined): string {
+  const base = getAssetUrl(s3Key);
+  if (!version) return base;
+  const ts = typeof version === "string" ? new Date(version).getTime() : version.getTime();
+  return `${base}?v=${ts}`;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, Fragment } from "react";
+import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import {
@@ -23,7 +23,7 @@ import {
   ImageIcon,
   Sparkles,
 } from "lucide-react";
-import { getAssetUrl } from "@/lib/assets";
+import { getVersionedAssetUrl } from "@/lib/assets";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -496,7 +496,6 @@ interface MlRowProps {
   isDeleting: boolean;
   onRegenerateImage: () => void;
   isRegeneratingImage: boolean;
-  imageVersion?: number;
 }
 
 function MlRow({
@@ -526,10 +525,10 @@ function MlRow({
   isDeleting,
   onRegenerateImage,
   isRegeneratingImage,
-  imageVersion,
 }: MlRowProps) {
   const isEditing = editingMlId === ml.id;
   const meta = metaParts(ml, topics, patterns, avatars);
+  const imageSrc = ml.imageS3Key ? getVersionedAssetUrl(ml.imageS3Key, ml.updatedAt) : null;
 
   if (isEditing) {
     return (
@@ -592,7 +591,7 @@ function MlRow({
               aria-label="View cover image"
             >
               <Image
-                src={`${getAssetUrl(ml.imageS3Key)}${imageVersion ? `?v=${imageVersion}` : ""}`}
+                src={imageSrc!}
                 alt=""
                 fill
                 sizes="40px"
@@ -605,7 +604,7 @@ function MlRow({
             <DialogTitle className="sr-only">{ml.title} cover image</DialogTitle>
             <div className="relative w-full bg-muted" style={{ aspectRatio: "3/4" }}>
               <Image
-                src={`${getAssetUrl(ml.imageS3Key)}${imageVersion ? `?v=${imageVersion}` : ""}`}
+                src={imageSrc!}
                 alt={ml.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 576px"
@@ -752,18 +751,66 @@ export function MicrolearningsSection() {
   const [draggingMlId, setDraggingMlId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ groupId: string; beforeIndex: number } | null>(null);
 
-  // Cover image regeneration: track in-flight IDs to drive polling, and per-ML
-  // version timestamps to bust the image cache (S3 key is stable across regens).
-  const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set());
-  const [imageVersions, setImageVersions] = useState<Map<string, number>>(new Map());
+  // Track MLs we're actively waiting on. For a newly-created ML the value is
+  // null (we wait until imageS3Key appears). For a regen the value is the
+  // updatedAt we saw when the regen started (we wait until updatedAt advances).
+  // The map drives polling and the per-row "pending" spinner — explicit
+  // tracking avoids polling forever for any MLs in a stuck state.
+  const [pendingImageIds, setPendingImageIds] = useState<Map<string, string | null>>(new Map());
+  const pendingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const stopWaiting = useCallback((id: string) => {
+    const t = pendingTimeoutsRef.current.get(id);
+    if (t) {
+      clearTimeout(t);
+      pendingTimeoutsRef.current.delete(id);
+    }
+    setPendingImageIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const startWaiting = useCallback((id: string, sinceUpdatedAt: string | null) => {
+    setPendingImageIds((prev) => new Map(prev).set(id, sinceUpdatedAt));
+    const existing = pendingTimeoutsRef.current.get(id);
+    if (existing) clearTimeout(existing);
+    // Safety net: if the backend never completes (Gemini failure, etc.) stop
+    // waiting after 90s so we don't poll forever or spin indefinitely.
+    pendingTimeoutsRef.current.set(id, setTimeout(() => stopWaiting(id), 90_000));
+  }, [stopWaiting]);
+
+  useEffect(() => {
+    const timeouts = pendingTimeoutsRef.current;
+    return () => {
+      for (const t of timeouts.values()) clearTimeout(t);
+      timeouts.clear();
+    };
+  }, []);
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const mlQuery = useQuery({
     queryKey: ["microlearnings"],
     queryFn: () => api.microlearnings.list(),
-    refetchInterval: regeneratingIds.size > 0 ? 5_000 : false,
+    refetchInterval: pendingImageIds.size > 0 ? 5_000 : false,
   });
+
+  // When polling returns updated data, stop waiting on any pending ML whose
+  // image has actually arrived (new ML: imageS3Key set; regen: updatedAt advanced).
+  useEffect(() => {
+    if (pendingImageIds.size === 0 || !mlQuery.data) return;
+    for (const [id, sinceUpdatedAt] of pendingImageIds) {
+      const ml = mlQuery.data.microlearnings.find((m) => m.id === id);
+      if (!ml) continue;
+      const done = sinceUpdatedAt === null
+        ? !!ml.imageS3Key
+        : !!ml.updatedAt && new Date(ml.updatedAt).getTime() > new Date(sinceUpdatedAt).getTime();
+      if (done) stopWaiting(id);
+    }
+  }, [mlQuery.data, pendingImageIds, stopWaiting]);
   const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.sequences.list() });
   const dnaQuery = useQuery({ queryKey: ["dna"], queryFn: () => api.dna.list() });
   const patternsQuery = useQuery({ queryKey: ["patterns"], queryFn: () => api.patterns.list() });
@@ -795,7 +842,13 @@ export function MicrolearningsSection() {
         avatarId: v.avatarId || null,
         sequenceId: null,
       }),
-    onSuccess: () => { invalidate(); setCreatingMl(false); },
+    onSuccess: (data) => {
+      invalidate();
+      // Backend kicks off image generation fire-and-forget — start waiting
+      // for the imageS3Key to appear on this new ML.
+      startWaiting(data.microlearning.id, null);
+      setCreatingMl(false);
+    },
   });
 
   const updateMlMutation = useMutation({
@@ -840,17 +893,10 @@ export function MicrolearningsSection() {
   const regenerateImageMutation = useMutation({
     mutationFn: (id: string) => api.microlearnings.regenerateImage(id),
     onMutate: (id) => {
-      setRegeneratingIds((prev) => new Set(prev).add(id));
-      // Gemini typically finishes within ~25s — stop polling and bust the
-      // image cache at that point so the browser fetches the new object.
-      setTimeout(() => {
-        setRegeneratingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        setImageVersions((prev) => new Map(prev).set(id, Date.now()));
-      }, 25_000);
+      // Record the current updatedAt; we stop waiting once polling sees a
+      // newer one (i.e. the backend wrote the regenerated image).
+      const ml = mlQuery.data?.microlearnings.find((m) => m.id === id);
+      startWaiting(id, ml?.updatedAt ?? null);
     },
   });
 
@@ -1146,8 +1192,7 @@ export function MicrolearningsSection() {
                         onDelete={() => deleteMlMutation.mutate(ml.id)}
                         isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
                         onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
-                        isRegeneratingImage={regeneratingIds.has(ml.id)}
-                        imageVersion={imageVersions.get(ml.id)}
+                        isRegeneratingImage={pendingImageIds.has(ml.id)}
                       />
                     </Fragment>
                   ))}
@@ -1230,7 +1275,7 @@ export function MicrolearningsSection() {
                     onDelete={() => deleteMlMutation.mutate(ml.id)}
                     isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
                     onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
-                    isRegeneratingImage={regenerateImageMutation.isPending && regenerateImageMutation.variables === ml.id}
+                    isRegeneratingImage={pendingImageIds.has(ml.id)}
                   />
                 </Fragment>
               ))}

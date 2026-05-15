@@ -11,7 +11,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface, CHAT_ENDPOINTS } from "@/features/chat";
 import type { ChatAvatar } from "@/features/chat";
 import { api } from "@/lib/api";
-import { getAssetUrl } from "@/lib/assets";
+import { getVersionedAssetUrl } from "@/lib/assets";
 
 export default function ChatPage() {
 
@@ -47,7 +47,7 @@ export default function ChatPage() {
         return {
           name: found.name,
           voiceId: found.voiceId,
-          image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
+          image: found.imageS3Key ? getVersionedAssetUrl(found.imageS3Key, found.updatedAt) : undefined,
         };
       }
     }
@@ -59,7 +59,7 @@ export default function ChatPage() {
         return {
           name: found.name,
           voiceId: found.voiceId,
-          image: found.imageS3Key ? getAssetUrl(found.imageS3Key) : undefined,
+          image: found.imageS3Key ? getVersionedAssetUrl(found.imageS3Key, found.updatedAt) : undefined,
         };
       }
     }

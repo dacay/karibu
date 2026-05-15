@@ -9,6 +9,14 @@ import type { Organization } from '../types/auth.js';
 const orgCache = new LRUCache<string, Organization>(1000);
 
 /**
+ * Drop a subdomain from the in-memory org cache. Call after mutating
+ * fields that affect the cached row (e.g. logo upload bumping logoUpdatedAt).
+ */
+export const invalidateOrgCache = (subdomain: string): void => {
+  orgCache.delete(subdomain);
+};
+
+/**
  * Organization middleware
  * Extracts subdomain from Host header and loads organization into context
  * Uses in-memory cache to avoid DB queries on every request

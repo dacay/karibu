@@ -23,6 +23,7 @@ export const organizations = pgTable('organizations', {
   expirationIntervalHours: integer('expiration_interval_hours').notNull().default(8),
   // Default avatar for learners who haven't chosen their own — stored as plain uuid (no FK) to avoid circular reference
   defaultAvatarId: uuid('default_avatar_id'),
+  logoUpdatedAt: timestamp('logo_updated_at'),
   ...timestamps,
 });
 

@@ -5,12 +5,27 @@ import { eq, and, or, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { organizations, avatars } from '../db/schema.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
-import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, invalidateCloudFrontPaths, type LogoVariant } from '../services/s3.js';
+import { invalidateOrgCache } from '../middleware/organization.js';
+import { uploadToAssetsBucket, deleteFromAssetsBucket, buildOrgLogoKey, type LogoVariant } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const org = new Hono();
 
-// All org config routes require authentication and admin role
+/**
+ * GET /org/public
+ * Public org metadata for unauthenticated UIs (e.g. login page logo).
+ * Returns only fields safe for anonymous viewers.
+ */
+org.get('/public', async (c) => {
+
+  const organization = c.get('organization');
+
+  return c.json({
+    logoUpdatedAt: organization.logoUpdatedAt ? organization.logoUpdatedAt.toISOString() : null,
+  });
+});
+
+// All remaining org config routes require authentication and admin role
 org.use('*', authMiddleware());
 org.use('*', requireRole('admin'));
 
@@ -51,6 +66,7 @@ org.get('/config', async (c) => {
         learnerTermPlural: organizations.learnerTermPlural,
         expirationIntervalHours: organizations.expirationIntervalHours,
         defaultAvatarId: organizations.defaultAvatarId,
+        logoUpdatedAt: organizations.logoUpdatedAt,
       })
       .from(organizations)
       .where(eq(organizations.id, organization.id))
@@ -205,9 +221,14 @@ org.post('/logo', async (c) => {
   try {
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    await uploadToAssetsBucket(s3Key, buffer, file.type, { cacheControl: 'no-cache' });
+    await uploadToAssetsBucket(s3Key, buffer, file.type);
 
-    await invalidateCloudFrontPaths([s3Key]);
+    await db
+      .update(organizations)
+      .set({ logoUpdatedAt: new Date() })
+      .where(eq(organizations.id, organization.id));
+
+    invalidateOrgCache(organization.subdomain);
 
     logger.debug({ organizationId: organization.id, variant, s3Key }, 'Org logo uploaded.');
 
@@ -240,6 +261,13 @@ org.delete('/logo/:variant', async (c) => {
   try {
 
     await deleteFromAssetsBucket(s3Key);
+
+    await db
+      .update(organizations)
+      .set({ logoUpdatedAt: new Date() })
+      .where(eq(organizations.id, organization.id));
+
+    invalidateOrgCache(organization.subdomain);
 
     logger.debug({ organizationId: organization.id, variant }, 'Org logo deleted.');
 

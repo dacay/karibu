@@ -49,6 +49,7 @@ export interface Organization {
   subdomain: string;
   pronunciation: string | null;
   defaultAvatarId: string | null;
+  logoUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

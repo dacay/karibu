@@ -15,18 +15,14 @@ import { CHAT_ENDPOINTS } from "@/features/chat";
 import { api, type Avatar as AvatarType } from "@/lib/api";
 import type { ChatAvatar } from "@/features/chat";
 import type { UIMessage } from "ai";
-import { getAssetUrl } from "@/lib/assets";
-
-function getAvatarImageUrl(imageS3Key: string | null): string | null {
-  return imageS3Key ? getAssetUrl(imageS3Key) : null;
-}
+import { getVersionedAssetUrl } from "@/lib/assets";
 
 function buildChatAvatar(avatar: AvatarType | null): ChatAvatar | undefined {
   if (!avatar) return undefined;
   return {
     name: avatar.name,
     voiceId: avatar.voiceId,
-    image: getAvatarImageUrl(avatar.imageS3Key) ?? undefined,
+    image: avatar.imageS3Key ? getVersionedAssetUrl(avatar.imageS3Key, avatar.updatedAt) : undefined,
   };
 }
 

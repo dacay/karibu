@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AccountMenu } from "@/components/AccountMenu";
 import { KaribuFooter } from "@/components/KaribuFooter";
-import { getAssetUrl } from "@/lib/assets";
+import { getVersionedAssetUrl } from "@/lib/assets";
 import { api, getApiBaseUrl, getToken, DEFAULT_INACTIVITY_WINDOW_MS, type LearnerFeedML } from "@/lib/api";
 
 // ─── Active ML card ─────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
   const isCompleted = ml.progress?.status === "completed";
   const isSequence = !!ml.sequenceName;
   const isNew = isSequence && ml.progress === null;
-  const imageUrl = ml.imageS3Key ? getAssetUrl(ml.imageS3Key) : null;
+  const imageUrl = ml.imageS3Key ? getVersionedAssetUrl(ml.imageS3Key, ml.updatedAt) : null;
 
   const glowColor = resolvedTheme === "dark"
     ? "rgba(34, 197, 94, 0.45)"
@@ -127,7 +127,7 @@ function ActiveMLCard({ ml }: { ml: LearnerFeedML }) {
 function ArchiveMLCard({ ml }: { ml: LearnerFeedML }) {
   const router = useRouter();
   const isCompleted = ml.progress?.status === "completed";
-  const imageUrl = ml.imageS3Key ? getAssetUrl(ml.imageS3Key) : null;
+  const imageUrl = ml.imageS3Key ? getVersionedAssetUrl(ml.imageS3Key, ml.updatedAt) : null;
 
   return (
     <button

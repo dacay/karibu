@@ -280,6 +280,7 @@ export interface OrgConfig {
   learnerTermPlural: string;
   expirationIntervalHours: number;
   defaultAvatarId: string | null;
+  logoUpdatedAt: string | null;
 }
 
 export interface FlaggedMessage {
@@ -622,6 +623,7 @@ export const api = {
       }),
   },
   org: {
+    getPublic: () => request<{ logoUpdatedAt: string | null }>("/org/public"),
     getConfig: () => request<OrgConfig>("/org/config"),
     updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string | null }) =>
       request<OrgConfig>("/org/config", {

@@ -6,7 +6,6 @@ import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff, UserCircl
 import Image from "next/image";
 import { api, type OrgConfig, type Avatar } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
-import { useBumpLogoVersion } from "@/hooks/useLogoVersion";
 import { getLogoUrl } from "@/lib/assets";
 import { getAssetUrl } from "@/lib/assets";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +30,7 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [cacheBust, setCacheBust] = useState<number | null>(null);
   const [imgError, setImgError] = useState(false);
-  const bumpLogoVersion = useBumpLogoVersion();
+  const queryClient = useQueryClient();
 
   const cdnPath = subdomain ? getLogoUrl(subdomain, variant) : null;
 
@@ -53,7 +52,8 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
       await api.org.uploadLogo(variant, file);
       setImgError(false);
       setCacheBust(Date.now());
-      bumpLogoVersion();
+      queryClient.invalidateQueries({ queryKey: ["org-public"] });
+      queryClient.invalidateQueries({ queryKey: ["org", "config"] });
       setStatus("done");
     } catch {
       setStatus("error");

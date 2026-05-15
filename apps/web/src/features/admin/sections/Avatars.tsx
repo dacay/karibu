@@ -14,13 +14,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { api, type Avatar, DEEPGRAM_VOICES } from "@/lib/api";
 import { useTTS } from "@/features/chat/hooks/useTTS";
-import { useAvatarImageVersion, useBumpAvatarImageVersion } from "@/hooks/useAvatarImageVersion";
-import { getAssetUrl } from "@/lib/assets";
+import { getVersionedAssetUrl } from "@/lib/assets";
 
-function getAvatarImageUrl(avatar: Avatar, version: number): string | null {
+function getAvatarImageUrl(avatar: Avatar): string | null {
   if (!avatar.imageS3Key) return null;
-  const base = getAssetUrl(avatar.imageS3Key);
-  return version ? `${base}?v=${version}` : base;
+  return getVersionedAssetUrl(avatar.imageS3Key, avatar.updatedAt);
 }
 
 // ─── Voice selector ────────────────────────────────────────────────────────────
@@ -289,11 +287,9 @@ interface AvatarCardProps {
 function AvatarCard({ avatar }: AvatarCardProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const avatarImageVersion = useAvatarImageVersion();
-  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
   const voice = DEEPGRAM_VOICES.find((v) => v.id === avatar.voiceId);
-  const imageUrl = getAvatarImageUrl(avatar, avatarImageVersion);
+  const imageUrl = getAvatarImageUrl(avatar);
 
   const updateMutation = useMutation({
     mutationFn: (values: AvatarFormValues) => {
@@ -304,8 +300,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.update(avatar.id, formData);
     },
-    onSuccess: (_data, variables) => {
-      if (variables.imageFile) bumpAvatarImageVersion();
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setEditing(false);
     },
@@ -409,7 +404,6 @@ function AvatarCard({ avatar }: AvatarCardProps) {
 export function AvatarsSection() {
   const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
-  const bumpAvatarImageVersion = useBumpAvatarImageVersion();
 
   const { data, isLoading } = useQuery({
     queryKey: ["avatars"],
@@ -425,8 +419,7 @@ export function AvatarsSection() {
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.create(formData);
     },
-    onSuccess: (_data, variables) => {
-      if (variables.imageFile) bumpAvatarImageVersion();
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["avatars"] });
       setCreating(false);
     },

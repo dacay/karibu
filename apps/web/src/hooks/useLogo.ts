@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSubdomain } from "./useSubdomain";
-import { useLogoVersion } from "./useLogoVersion";
 import { getLogoUrl } from "@/lib/assets";
+import { api } from "@/lib/api";
 
 const FALLBACK_LIGHT = "/logo-light.png";
 const FALLBACK_DARK = "/logo-dark.png";
@@ -20,7 +21,14 @@ function probeImage(src: string): Promise<string | null> {
 
 export function useLogo() {
   const { subdomain, isLoading: subdomainLoading } = useSubdomain();
-  const version = useLogoVersion();
+
+  // Hit the public endpoint — no auth required, works on login + learner pages.
+  const orgQuery = useQuery({
+    queryKey: ["org-public"],
+    queryFn: () => api.org.getPublic(),
+  });
+  const logoUpdatedAt = orgQuery.data?.logoUpdatedAt ?? null;
+
   const [lightSrc, setLightSrc] = useState("");
   const [darkSrc, setDarkSrc] = useState("");
   const [probing, setProbing] = useState(true);
@@ -37,7 +45,7 @@ export function useLogo() {
 
     setProbing(true);
     let cancelled = false;
-    const suffix = version ? `?v=${version}` : "";
+    const suffix = logoUpdatedAt ? `?v=${new Date(logoUpdatedAt).getTime()}` : "";
     const cdnLight = `${getLogoUrl(subdomain, "light")}${suffix}`;
     const cdnDark = `${getLogoUrl(subdomain, "dark")}${suffix}`;
 
@@ -51,7 +59,7 @@ export function useLogo() {
     );
 
     return () => { cancelled = true; };
-  }, [subdomain, subdomainLoading, version]);
+  }, [subdomain, subdomainLoading, logoUpdatedAt]);
 
   return { lightSrc, darkSrc, isLoading: subdomainLoading || probing };
 }

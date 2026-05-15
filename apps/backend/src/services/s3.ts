@@ -139,7 +139,7 @@ export const downloadFromDocsBucket = async (key: string): Promise<Buffer> => {
 // ─── Assets bucket (CDN-fronted, public read) ──────────────────────────────────
 
 export const uploadToAssetsBucket = (key: string, body: Buffer, mimeType: string, options?: UploadOptions): Promise<UploadResult> =>
-  upload(getAssetsBucketName(), key, body, mimeType, options)
+  upload(getAssetsBucketName(), key, body, mimeType, { cacheControl: 'public, max-age=31536000, immutable', ...options })
 
 export const deleteFromAssetsBucket = (key: string): Promise<void> =>
   remove(getAssetsBucketName(), key)
