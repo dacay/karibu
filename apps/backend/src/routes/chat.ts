@@ -34,6 +34,7 @@ import {
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { notifyMlCompletion } from '../services/completion-webhook.js';
+import { isMicrolearningComplete } from '../services/completion-classifier.js';
 
 const chat = new Hono();
 
@@ -439,6 +440,54 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       }).catch((err) => {
         logger.error({ err, chatId }, 'Failed to persist ML chat after stream finish.');
       });
+
+      // Safety net: the main chat model occasionally writes a closing message
+      // without calling markLearningComplete in the same step (so the ML only
+      // gets marked complete after the learner sends another message). Run a
+      // cheap classifier on the finished conversation; if it agrees the
+      // session is complete, mark it now so completion happens on the same
+      // turn instead of the next one.
+      if (!justCompleted && !isCompleted) {
+        void (async () => {
+          try {
+            const shouldComplete = await isMicrolearningComplete({
+              messages: updatedMessages,
+              topics: mlTopics,
+              subtopics: relevantSubtopics,
+            });
+            if (!shouldComplete) return;
+
+            const result = await db
+              .update(microlearningProgress)
+              .set({ status: 'completed', completedAt: new Date() })
+              .where(and(
+                eq(microlearningProgress.userId, auth.userId),
+                eq(microlearningProgress.microlearningId, microlearningId),
+                eq(microlearningProgress.status, 'active'),
+              ))
+              .returning({ id: microlearningProgress.id });
+
+            if (result.length === 0) return;
+
+            logger.info(
+              { userId: auth.userId, microlearningId },
+              'Microlearning marked as completed by classifier safety net.',
+            );
+
+            if (ml.completionWebhookUrl) {
+              void notifyMlCompletion({
+                url: ml.completionWebhookUrl,
+                karibuUserId: auth.userId,
+                organizationId: auth.organizationId,
+                microlearningId,
+                completedAt: new Date(),
+              });
+            }
+          } catch (err) {
+            logger.error({ err, userId: auth.userId, microlearningId }, 'Classifier safety net failed.');
+          }
+        })();
+      }
     },
   });
 });

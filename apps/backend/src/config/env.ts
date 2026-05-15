@@ -40,6 +40,10 @@ const envSchema = z.object({
   // AI / LLM
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_CHAT_MODEL: z.string().default('gpt-5.1'),
+  // Cheap/fast model used as a safety-net classifier that decides whether a
+  // microlearning conversation has reached completion, in case the chat model
+  // wrapped up in plain text without invoking the markLearningComplete tool.
+  OPENAI_CLASSIFIER_MODEL: z.string().default('gpt-5-mini'),
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
   DEEPGRAM_API_KEY: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),

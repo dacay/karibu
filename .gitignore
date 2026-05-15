@@ -46,3 +46,7 @@ dist/
 !DEVELOPMENT.md
 !README.md
 !CONVENTIONS.md
+
+integrations/teambridge/*.json
+integrations/teambridge/.env*
+
