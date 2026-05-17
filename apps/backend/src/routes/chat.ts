@@ -46,6 +46,12 @@ chat.use('*', authMiddleware());
 /**
  * Build the system prompt for a microlearning chat session.
  */
+const RESPONSE_LENGTH_DIRECTIVES: Record<'short' | 'medium' | 'long', string | null> = {
+  short: 'RESPONSE LENGTH: Keep each message to 1–2 sentences. Be concise and direct.',
+  medium: 'RESPONSE LENGTH: Keep each message to 2–4 sentences. Balance clarity with brevity.',
+  long: null, // no constraint — let the AI respond as fully as the topic requires
+};
+
 function buildMLSystemPrompt(
   patternPrompt: string,
   topics: Array<{ name: string; description: string }>,
@@ -53,9 +59,15 @@ function buildMLSystemPrompt(
   dnaKnowledge: string[],
   isCompleted: boolean,
   organizationName: string,
+  responseLengthOption: 'short' | 'medium' | 'long' = 'medium',
 ): string {
 
   const parts: string[] = [patternPrompt];
+
+  const lengthDirective = RESPONSE_LENGTH_DIRECTIVES[responseLengthOption];
+  if (lengthDirective) {
+    parts.push(`\n${lengthDirective}`);
+  }
 
   parts.push(`\nORGANIZATION: ${organizationName}`);
 
@@ -238,11 +250,13 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
   let multipleChoiceEnabled = false;
+  let responseLengthOption: 'short' | 'medium' | 'long' = 'medium';
   if (ml.patternId) {
     const [pattern] = await db
       .select({
         prompt: conversationPatterns.prompt,
         multipleChoiceEnabled: conversationPatterns.multipleChoiceEnabled,
+        responseLengthOption: conversationPatterns.responseLengthOption,
       })
       .from(conversationPatterns)
       .where(eq(conversationPatterns.id, ml.patternId))
@@ -251,6 +265,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
       patternPrompt = pattern.prompt;
       multipleChoiceEnabled = pattern.multipleChoiceEnabled;
+      responseLengthOption = pattern.responseLengthOption;
     }
   }
 
@@ -330,6 +345,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     dnaKnowledge,
     isCompleted,
     organizationName,
+    responseLengthOption,
   );
 
   // Track whether the ML was completed during this request

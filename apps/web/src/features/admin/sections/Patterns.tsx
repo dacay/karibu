@@ -19,6 +19,14 @@ import { api, type ConversationPattern } from "@/lib/api";
 
 // ─── Pattern form ─────────────────────────────────────────────────────────────
 
+type ResponseLengthOption = 'short' | 'medium' | 'long';
+
+const RESPONSE_LENGTH_OPTIONS: { value: ResponseLengthOption; label: string; description: string }[] = [
+  { value: 'short', label: 'Short', description: '1–2 sentences per turn' },
+  { value: 'medium', label: 'Medium', description: '2–4 sentences per turn' },
+  { value: 'long', label: 'Long', description: 'Unbounded — as much as needed' },
+];
+
 interface PatternFormProps {
   open: boolean;
   title: string;
@@ -26,7 +34,8 @@ interface PatternFormProps {
   initialDescription?: string;
   initialPrompt?: string;
   initialMultipleChoiceEnabled?: boolean;
-  onSave: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) => void;
+  initialResponseLengthOption?: ResponseLengthOption;
+  onSave: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean; responseLengthOption: ResponseLengthOption }) => void;
   onCancel: () => void;
   isLoading: boolean;
   submitLabel?: string;
@@ -39,6 +48,7 @@ function PatternForm({
   initialDescription = "",
   initialPrompt = "",
   initialMultipleChoiceEnabled = false,
+  initialResponseLengthOption = "medium",
   onSave,
   onCancel,
   isLoading,
@@ -48,6 +58,7 @@ function PatternForm({
   const [description, setDescription] = useState(initialDescription);
   const [prompt, setPrompt] = useState(initialPrompt);
   const [multipleChoiceEnabled, setMultipleChoiceEnabled] = useState(initialMultipleChoiceEnabled);
+  const [responseLengthOption, setResponseLengthOption] = useState<ResponseLengthOption>(initialResponseLengthOption);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reset form when dialog opens with new initial values
@@ -57,6 +68,7 @@ function PatternForm({
       setDescription(initialDescription);
       setPrompt(initialPrompt);
       setMultipleChoiceEnabled(initialMultipleChoiceEnabled);
+      setResponseLengthOption(initialResponseLengthOption);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -117,11 +129,37 @@ function PatternForm({
               </span>
             </span>
           </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Response length</span>
+            <div className="flex gap-2">
+              {RESPONSE_LENGTH_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex flex-1 flex-col items-center gap-0.5 rounded-md border px-3 py-2 text-sm cursor-pointer select-none transition-colors ${
+                    responseLengthOption === opt.value
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-input text-muted-foreground hover:border-muted-foreground/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    className="sr-only"
+                    name="responseLengthOption"
+                    value={opt.value}
+                    checked={responseLengthOption === opt.value}
+                    onChange={() => setResponseLengthOption(opt.value)}
+                  />
+                  <span className="font-medium">{opt.label}</span>
+                  <span className="text-xs text-center leading-tight">{opt.description}</span>
+                </label>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-2 pt-1">
             <Button
               size="sm"
               disabled={!valid || isLoading}
-              onClick={() => onSave({ name, description, prompt, multipleChoiceEnabled })}
+              onClick={() => onSave({ name, description, prompt, multipleChoiceEnabled, responseLengthOption })}
             >
               {isLoading ? <Spinner className="size-3 mr-1" /> : null}
               {submitLabel}
@@ -148,7 +186,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
   const [editing, setEditing] = useState(false);
 
   const updateMutation = useMutation({
-    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) =>
+    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean; responseLengthOption: ResponseLengthOption }) =>
       api.patterns.update(pattern.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patterns"] });
@@ -170,6 +208,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
         initialDescription={pattern.description}
         initialPrompt={pattern.prompt}
         initialMultipleChoiceEnabled={pattern.multipleChoiceEnabled}
+        initialResponseLengthOption={pattern.responseLengthOption}
         onSave={(values) => updateMutation.mutate(values)}
         onCancel={() => setEditing(false)}
         isLoading={updateMutation.isPending}
@@ -186,6 +225,7 @@ function PatternCard({ pattern, onUseAsTemplate }: PatternCardProps) {
             {pattern.multipleChoiceEnabled && (
               <Badge variant="outline" className="text-xs">Multiple choice</Badge>
             )}
+            <Badge variant="outline" className="text-xs capitalize">{pattern.responseLengthOption} responses</Badge>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {pattern.isBuiltIn ? (
@@ -254,7 +294,7 @@ export function PatternsSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean }) =>
+    mutationFn: (values: { name: string; description: string; prompt: string; multipleChoiceEnabled: boolean; responseLengthOption: ResponseLengthOption }) =>
       api.patterns.create(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["patterns"] });
@@ -299,6 +339,7 @@ export function PatternsSection() {
         initialDescription={templateValues?.description ?? ""}
         initialPrompt={templateValues?.prompt ?? ""}
         initialMultipleChoiceEnabled={templateValues?.multipleChoiceEnabled ?? false}
+        initialResponseLengthOption={templateValues?.responseLengthOption ?? "medium"}
         onSave={(values) => createMutation.mutate(values)}
         onCancel={handleCancelCreate}
         isLoading={createMutation.isPending}

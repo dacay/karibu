@@ -20,6 +20,7 @@ const BUILT_IN_PATTERNS: Array<{
   description: string;
   prompt: string;
   multipleChoiceEnabled?: boolean;
+  responseLengthOption?: 'short' | 'medium' | 'long';
 }> = [
   {
     name: 'Interactive Q&A',
@@ -119,6 +120,7 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
           prompt: pattern.prompt,
           description: pattern.description,
           multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
+          responseLengthOption: pattern.responseLengthOption ?? 'medium',
         })
         .where(eq(conversationPatterns.id, existing.id));
       console.log(`  Updated pattern: ${pattern.name}`);
@@ -132,6 +134,7 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
       prompt: pattern.prompt,
       isBuiltIn: true,
       multipleChoiceEnabled: pattern.multipleChoiceEnabled ?? false,
+      responseLengthOption: pattern.responseLengthOption ?? 'medium',
     });
 
     console.log(`  Created pattern: ${pattern.name}`);

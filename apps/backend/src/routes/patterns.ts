@@ -42,6 +42,7 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
     description: string;
     prompt: string;
     multipleChoiceEnabled?: boolean;
+    responseLengthOption?: 'short' | 'medium' | 'long';
   }>();
 
   if (!body.name?.trim()) {
@@ -52,6 +53,11 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
     return c.json({ error: 'Pattern prompt is required.' }, 400);
   }
 
+  const validLengthOptions = ['short', 'medium', 'long'] as const;
+  const responseLengthOption = validLengthOptions.includes(body.responseLengthOption as typeof validLengthOptions[number])
+    ? (body.responseLengthOption as typeof validLengthOptions[number])
+    : 'medium';
+
   const [pattern] = await db
     .insert(conversationPatterns)
     .values({
@@ -61,6 +67,7 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
       prompt: body.prompt.trim(),
       isBuiltIn: false,
       multipleChoiceEnabled: body.multipleChoiceEnabled ?? false,
+      responseLengthOption,
     })
     .returning();
 
@@ -82,6 +89,7 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
     description?: string;
     prompt?: string;
     multipleChoiceEnabled?: boolean;
+    responseLengthOption?: 'short' | 'medium' | 'long';
   }>();
 
   const [pattern] = await db
@@ -98,6 +106,7 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
     return c.json({ error: 'Built-in patterns cannot be modified.' }, 403);
   }
 
+  const validLengthOptions = ['short', 'medium', 'long'] as const;
   const [updated] = await db
     .update(conversationPatterns)
     .set({
@@ -105,6 +114,9 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
       ...(body.description !== undefined ? { description: body.description.trim() } : {}),
       ...(body.prompt?.trim() ? { prompt: body.prompt.trim() } : {}),
       ...(body.multipleChoiceEnabled !== undefined ? { multipleChoiceEnabled: body.multipleChoiceEnabled } : {}),
+      ...(body.responseLengthOption !== undefined && validLengthOptions.includes(body.responseLengthOption as typeof validLengthOptions[number])
+        ? { responseLengthOption: body.responseLengthOption as typeof validLengthOptions[number] }
+        : {}),
     })
     .where(eq(conversationPatterns.id, id))
     .returning();

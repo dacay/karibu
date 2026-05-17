@@ -242,6 +242,9 @@ export const dnaValues = pgTable('dna_values', {
   index('dna_values_subtopic_id_idx').on(table.subtopicId),
 ]);
 
+// Response length option enum for conversation patterns
+export const responseLengthOptionEnum = pgEnum('response_length_option', ['short', 'medium', 'long']);
+
 // Conversation patterns table - defines AI conversation modes for microlearnings
 export const conversationPatterns = pgTable('conversation_patterns', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -251,6 +254,7 @@ export const conversationPatterns = pgTable('conversation_patterns', {
   prompt: text('prompt').notNull(),
   isBuiltIn: boolean('is_built_in').notNull().default(false),
   multipleChoiceEnabled: boolean('multiple_choice_enabled').notNull().default(false),
+  responseLengthOption: responseLengthOptionEnum('response_length_option').notNull().default('medium'),
   ...timestamps,
 }, (table) => [
   index('conversation_patterns_organization_id_idx').on(table.organizationId),
