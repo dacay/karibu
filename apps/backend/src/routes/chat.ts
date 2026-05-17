@@ -354,7 +354,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   };
 
   const offerOptionsTool = {
-    description: 'Attach 2-4 short multiple-choice options to the current question. Options are shown as clickable chips below the message. The learner can still type a free-form answer.',
+    description: 'Attach 2-4 short multiple-choice options to the current question. Every option MUST be a direct, grammatically-matching answer to the exact question being asked ("When..." → times, "Why..." → reasons, "Which step..." → steps), with EXACTLY ONE option unambiguously correct and the rest plausible distractors drawn from real misconceptions. Options must be mutually exclusive and share parallel structure and similar length. Options are shown as clickable chips below the message; the learner can still type a free-form answer.',
     inputSchema: z.object({
       options: z
         .array(z.string().min(1).max(80))
