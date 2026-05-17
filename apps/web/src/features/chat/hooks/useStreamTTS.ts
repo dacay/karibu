@@ -12,10 +12,15 @@ export type StreamTTSState =
 export interface UseStreamTTSReturn {
   state: StreamTTSState;
   isSpeaking: boolean;
+  isPaused: boolean;
   /** Open a TTS WebSocket. Returns a controller to send chunks, or null on error. */
   startStream: (voiceId?: string, onDone?: () => void) => StreamTTSController | null;
   /** Stop playback immediately and close the connection. */
   stop: () => void;
+  /** Suspend audio playback. New audio continues to buffer and will play on resume. */
+  pause: () => void;
+  /** Resume audio playback from where it was paused. */
+  resume: () => void;
 }
 
 export interface StreamTTSController {
@@ -52,6 +57,7 @@ function getWsBaseUrl(): string {
  */
 export function useStreamTTS(): UseStreamTTSReturn {
   const [state, setState] = useState<StreamTTSState>("idle");
+  const [isPaused, setIsPaused] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -59,6 +65,9 @@ export function useStreamTTS(): UseStreamTTSReturn {
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const onDoneCallbackRef = useRef<(() => void) | null>(null);
   const streamFinishedRef = useRef(false);
+  // Tracks user-initiated pause so playPcmChunk does not auto-resume the context
+  // when new audio arrives while paused.
+  const isPausedRef = useRef(false);
 
   const checkDrained = useCallback(() => {
     if (streamFinishedRef.current && activeSourcesRef.current.size === 0) {
@@ -94,12 +103,32 @@ export function useStreamTTS(): UseStreamTTSReturn {
     nextPlayTimeRef.current = 0;
     streamFinishedRef.current = false;
     onDoneCallbackRef.current = null;
+    isPausedRef.current = false;
+    setIsPaused(false);
   }, []);
 
   const stop = useCallback(() => {
     cleanup();
     setState("idle");
   }, [cleanup]);
+
+  const pause = useCallback(() => {
+    isPausedRef.current = true;
+    setIsPaused(true);
+    const ctx = audioCtxRef.current;
+    if (ctx && ctx.state === "running") {
+      ctx.suspend().catch(() => {});
+    }
+  }, []);
+
+  const resume = useCallback(() => {
+    isPausedRef.current = false;
+    setIsPaused(false);
+    const ctx = audioCtxRef.current;
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+  }, []);
 
   const playPcmChunk = useCallback((pcmData: ArrayBuffer) => {
     let ctx = audioCtxRef.current;
@@ -108,8 +137,10 @@ export function useStreamTTS(): UseStreamTTSReturn {
       audioCtxRef.current = ctx;
     }
 
-    // Resume if suspended (browser autoplay policy)
-    if (ctx.state === "suspended") {
+    // Resume if suspended due to browser autoplay policy. Skip when the user
+    // explicitly paused — new chunks still get scheduled on the suspended
+    // timeline and will play once resumed.
+    if (ctx.state === "suspended" && !isPausedRef.current) {
       ctx.resume();
     }
 
@@ -232,5 +263,5 @@ export function useStreamTTS(): UseStreamTTSReturn {
 
   const isSpeaking = state === "streaming" || state === "draining" || state === "connecting";
 
-  return { state, isSpeaking, startStream, stop };
+  return { state, isSpeaking, isPaused, startStream, stop, pause, resume };
 }

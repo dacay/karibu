@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, useEffect, useRef } from "react";
-import { Send, Mic, Loader2, Square } from "lucide-react";
+import { Send, Mic, Loader2, Square, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { VoiceInputState } from "../hooks/useVoiceInput";
@@ -18,9 +18,12 @@ interface ChatInputProps {
   stopListening: () => void;
   // Voice mode controls
   isSpeaking: boolean;
+  isSpeechPaused: boolean;
   voicePaused: boolean;
   onStopVoice: () => void;
   onStartVoice: () => void;
+  onPauseSpeech: () => void;
+  onResumeSpeech: () => void;
 }
 
 export function ChatInput({
@@ -34,9 +37,12 @@ export function ChatInput({
   startListening,
   stopListening,
   isSpeaking,
+  isSpeechPaused,
   voicePaused,
   onStopVoice,
   onStartVoice,
+  onPauseSpeech,
+  onResumeSpeech,
 }: ChatInputProps) {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,7 +67,9 @@ export function ChatInput({
     const loopRunning = !voicePaused;
     const isProcessing = voiceState === "transcribing" || isLoading;
 
-    const statusText = isSpeaking
+    const statusText = isSpeechPaused
+      ? "Paused"
+      : isSpeaking
       ? "Speaking..."
       : voiceState === "recording"
       ? "Listening..."
@@ -71,34 +79,60 @@ export function ChatInput({
       ? "Listening..."
       : "Tap to speak";
 
+    const showPauseResume = loopRunning && (isSpeaking || isSpeechPaused);
+
     return (
       <div className="shrink-0 border-t bg-background px-4 py-6">
         <div className="flex flex-col items-center gap-3">
           <p className="text-sm text-muted-foreground">{statusText}</p>
-          <div className="relative flex items-center justify-center">
-            {loopRunning && !isProcessing && (
-              <>
-                <span className="absolute inline-flex h-16 w-16 rounded-full bg-blue-400 opacity-40 animate-ping" />
-                <span className="absolute inline-flex h-16 w-16 rounded-full bg-blue-400 opacity-20 animate-ping [animation-delay:0.4s]" />
-              </>
+          <div className="flex items-center justify-center gap-6">
+            {showPauseResume && (
+              <Button
+                type="button"
+                size="icon"
+                variant="default"
+                className="h-14 w-14 rounded-full bg-blue-500 hover:bg-blue-600"
+                onClick={isSpeechPaused ? onResumeSpeech : onPauseSpeech}
+                aria-label={isSpeechPaused ? "Resume" : "Pause"}
+              >
+                {isSpeechPaused ? (
+                  <Play className="size-6 fill-current" />
+                ) : (
+                  <Pause className="size-6 fill-current" />
+                )}
+              </Button>
             )}
-            <Button
-              type="button"
-              size="icon"
-              variant="default"
-              className={`relative h-16 w-16 rounded-full ${loopRunning ? "bg-blue-500 hover:bg-blue-600" : ""}`}
-              onClick={loopRunning ? onStopVoice : onStartVoice}
-              disabled={isProcessing}
-              aria-label={loopRunning ? "Stop" : "Start speaking"}
-            >
-              {isProcessing ? (
-                <Loader2 className="size-6 animate-spin" />
-              ) : loopRunning ? (
-                <Square className="size-6 fill-current" />
-              ) : (
-                <Mic className="size-6" />
+            <div className="relative flex items-center justify-center">
+              {loopRunning && !isProcessing && !isSpeechPaused && !showPauseResume && (
+                <>
+                  <span className="absolute inline-flex h-14 w-14 rounded-full bg-blue-400 opacity-40 animate-ping" />
+                  <span className="absolute inline-flex h-14 w-14 rounded-full bg-blue-400 opacity-20 animate-ping [animation-delay:0.4s]" />
+                </>
               )}
-            </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="default"
+                className={`relative h-14 w-14 rounded-full ${
+                  loopRunning
+                    ? showPauseResume
+                      ? "bg-slate-700 hover:bg-slate-600"
+                      : "bg-blue-500 hover:bg-blue-600"
+                    : ""
+                }`}
+                onClick={loopRunning ? onStopVoice : onStartVoice}
+                disabled={isProcessing}
+                aria-label={loopRunning ? "Stop" : "Start speaking"}
+              >
+                {isProcessing ? (
+                  <Loader2 className="size-6 animate-spin" />
+                ) : loopRunning ? (
+                  <Square className="size-6 fill-current" />
+                ) : (
+                  <Mic className="size-6" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

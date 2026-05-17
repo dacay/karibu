@@ -74,7 +74,7 @@ export function ChatInterface({
   const [isCompleted, setIsCompleted] = useState(false);
 
   // Streaming TTS
-  const { startStream, stop: stopStreamTTS, isSpeaking } = useStreamTTS();
+  const { startStream, stop: stopStreamTTS, pause: pauseStreamTTS, resume: resumeStreamTTS, isSpeaking, isPaused: isSpeechPaused } = useStreamTTS();
   const streamControllerRef = useRef<StreamTTSController | null>(null);
   const sentCharsRef = useRef(0);
   const chunkBufferRef = useRef("");
@@ -197,6 +197,16 @@ export function ChatInterface({
     voicePausedRef.current = false;
     startListeningRef.current();
   }, []);
+
+  // Pause AI playback mid-speech. Audio context is suspended; resuming continues
+  // from the exact position. The stream keeps buffering in the background.
+  const handlePauseSpeech = useCallback(() => {
+    pauseStreamTTS();
+  }, [pauseStreamTTS]);
+
+  const handleResumeSpeech = useCallback(() => {
+    resumeStreamTTS();
+  }, [resumeStreamTTS]);
 
   // ─── Streaming TTS: open WS when streaming starts ───────────────────────────
 
@@ -389,9 +399,12 @@ export function ChatInterface({
         startListening={startListening}
         stopListening={stopListening}
         isSpeaking={isSpeaking}
+        isSpeechPaused={isSpeechPaused}
         voicePaused={voicePaused}
         onStopVoice={handleStopVoice}
         onStartVoice={handleStartVoice}
+        onPauseSpeech={handlePauseSpeech}
+        onResumeSpeech={handleResumeSpeech}
       />
     </div>
   );
