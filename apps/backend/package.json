@@ -15,6 +15,7 @@
     "db:seed:admins": "tsx src/scripts/seed.admins.ts",
     "db:create-org": "tsx src/scripts/create-org.ts",
     "db:add-admin": "tsx src/scripts/add-admin.ts",
+    "db:reset-password": "tsx src/scripts/reset-password.ts",
     "set-ml-webhook": "tsx src/scripts/set-ml-completion-webhook.ts"
   },
   "dependencies": {

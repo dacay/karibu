@@ -6,6 +6,7 @@
     "dev:web": "pnpm --filter karibu-web dev",
     "dev:db:push": "pnpm --filter karibu-backend db:push",
     "create-org": "pnpm --filter karibu-backend db:create-org",
-    "add-admin": "pnpm --filter karibu-backend db:add-admin"
+    "add-admin": "pnpm --filter karibu-backend db:add-admin",
+    "reset-password": "pnpm --filter karibu-backend db:reset-password"
   }
 }
