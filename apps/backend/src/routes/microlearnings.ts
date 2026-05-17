@@ -114,8 +114,9 @@ microlearningsRouter.get('/my', async (c) => {
 
 /**
  * GET /microlearnings/feed
- * Structured learner feed: active (next per sequence + standalones) and archive
- * (completed/expired). Applies lazy expiry to stale active progress records.
+ * Structured learner feed: active (next per sequence + uncompleted standalones)
+ * and archive (completed/expired). Applies lazy expiry to stale active progress
+ * records.
  */
 microlearningsRouter.get('/feed', async (c) => {
 
@@ -288,9 +289,14 @@ microlearningsRouter.get('/feed', async (c) => {
     }
   }
 
-  // Standalone (on-demand) MLs: always active, never archived
+  // Standalone (on-demand) MLs: archive if completed or expired
   for (const ml of standaloneMLs) {
-    active.push(buildItem(ml, null));
+    const progress = progressMap.get(ml.id) ?? null;
+    if (progress === null || progress.status === 'active') {
+      active.push(buildItem(ml, null));
+    } else {
+      archive.push(buildItem(ml, null));
+    }
   }
 
   return c.json({ active, archive, expirationIntervalMs });
