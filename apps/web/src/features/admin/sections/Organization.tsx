@@ -32,11 +32,20 @@ function LogoUpload({ variant, subdomain }: LogoUploadProps) {
   const [imgError, setImgError] = useState(false);
   const queryClient = useQueryClient();
 
+  const { data: orgPublic } = useQuery({
+    queryKey: ["org-public"],
+    queryFn: () => api.org.getPublic(),
+  });
+  const serverVersion = orgPublic?.logoUpdatedAt
+    ? new Date(orgPublic.logoUpdatedAt).getTime()
+    : null;
+  const version = cacheBust ?? serverVersion;
+
   const cdnPath = subdomain ? getLogoUrl(subdomain, variant) : null;
 
   const previewSrc = cdnPath
-    ? cacheBust
-      ? `${cdnPath}?v=${cacheBust}`
+    ? version
+      ? `${cdnPath}?v=${version}`
       : cdnPath
     : null;
 
