@@ -30,6 +30,7 @@ import {
   microlearningSequenceAssignments,
   chats,
   organizations,
+  users,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -43,6 +44,14 @@ chat.use('*', authMiddleware());
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function formatLearnerName(
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+): string | null {
+  const name = [firstName, lastName].filter(Boolean).join(' ').trim();
+  return name || null;
+}
+
 /**
  * Build the system prompt for a microlearning chat session.
  */
@@ -53,11 +62,16 @@ function buildMLSystemPrompt(
   dnaKnowledge: string[],
   isCompleted: boolean,
   organizationName: string,
+  learnerName: string | null,
 ): string {
 
   const parts: string[] = [patternPrompt];
 
   parts.push(`\nORGANIZATION: ${organizationName}`);
+
+  if (learnerName) {
+    parts.push(`LEARNER: ${learnerName}`);
+  }
 
   if (topics.length === 1) {
     parts.push(`\n---\nMICROLEARNING TOPIC: ${topics[0].name}`);
@@ -246,13 +260,21 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     }
   }
 
-  // Load organization name
-  const [org] = await db
-    .select({ name: organizations.name })
-    .from(organizations)
-    .where(eq(organizations.id, auth.organizationId))
-    .limit(1);
+  // Load organization name and learner name in parallel
+  const [[org], [learner]] = await Promise.all([
+    db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, auth.organizationId))
+      .limit(1),
+    db
+      .select({ firstName: users.firstName, lastName: users.lastName })
+      .from(users)
+      .where(eq(users.id, auth.userId))
+      .limit(1),
+  ]);
   const organizationName = org?.name ?? 'your organization';
+  const learnerName = formatLearnerName(learner?.firstName, learner?.lastName);
 
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
@@ -349,6 +371,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     dnaKnowledge,
     isCompleted,
     organizationName,
+    learnerName,
   );
 
   // Track whether the ML was completed during this request
@@ -534,14 +557,26 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   const messages = c.req.valid('json').messages as UIMessage[];
   const auth = c.get('auth') as UserAuthContext;
 
-  const [assistantOrg] = await db
-    .select({ name: organizations.name })
-    .from(organizations)
-    .where(eq(organizations.id, auth.organizationId))
-    .limit(1);
+  const [[assistantOrg], [assistantLearner]] = await Promise.all([
+    db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, auth.organizationId))
+      .limit(1),
+    db
+      .select({ firstName: users.firstName, lastName: users.lastName })
+      .from(users)
+      .where(eq(users.id, auth.userId))
+      .limit(1),
+  ]);
   const assistantOrgName = assistantOrg?.name ?? 'your organization';
+  const assistantLearnerName = formatLearnerName(assistantLearner?.firstName, assistantLearner?.lastName);
 
-  const assistantSystemPrompt = `You are a helpful assistant for the organization "${assistantOrgName}". Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — call it before answering whenever the user is asking for information.
+  const learnerLine = assistantLearnerName
+    ? `\n\nLEARNER: ${assistantLearnerName}\nAddress the learner by their first name when it feels natural.`
+    : '';
+
+  const assistantSystemPrompt = `You are a helpful assistant for the organization "${assistantOrgName}".${learnerLine} Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — call it before answering whenever the user is asking for information.
 
 The tool returns results in labeled sections:
 - [Source Knowledge] — curated, verified organizational knowledge. Prioritize this.
