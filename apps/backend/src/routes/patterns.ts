@@ -5,6 +5,13 @@ import { db } from '../db/index.js';
 import { conversationPatterns } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 
+const RESPONSE_LENGTHS = ['short', 'medium', 'long'] as const;
+type ResponseLength = (typeof RESPONSE_LENGTHS)[number];
+
+function isValidResponseLength(value: unknown): value is ResponseLength {
+  return typeof value === 'string' && (RESPONSE_LENGTHS as readonly string[]).includes(value);
+}
+
 const patternsRouter = new Hono();
 
 patternsRouter.use('*', authMiddleware());
@@ -42,6 +49,7 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
     description: string;
     prompt: string;
     multipleChoiceEnabled?: boolean;
+    responseLength?: string | null;
   }>();
 
   if (!body.name?.trim()) {
@@ -50,6 +58,10 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
 
   if (!body.prompt?.trim()) {
     return c.json({ error: 'Pattern prompt is required.' }, 400);
+  }
+
+  if (body.responseLength != null && !isValidResponseLength(body.responseLength)) {
+    return c.json({ error: 'Invalid response length.' }, 400);
   }
 
   const [pattern] = await db
@@ -61,6 +73,7 @@ patternsRouter.post('/', requireRole('admin'), async (c) => {
       prompt: body.prompt.trim(),
       isBuiltIn: false,
       multipleChoiceEnabled: body.multipleChoiceEnabled ?? false,
+      responseLength: body.responseLength ?? null,
     })
     .returning();
 
@@ -82,7 +95,12 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
     description?: string;
     prompt?: string;
     multipleChoiceEnabled?: boolean;
+    responseLength?: string | null;
   }>();
+
+  if (body.responseLength != null && !isValidResponseLength(body.responseLength)) {
+    return c.json({ error: 'Invalid response length.' }, 400);
+  }
 
   const [pattern] = await db
     .select()
@@ -105,6 +123,7 @@ patternsRouter.patch('/:id', requireRole('admin'), async (c) => {
       ...(body.description !== undefined ? { description: body.description.trim() } : {}),
       ...(body.prompt?.trim() ? { prompt: body.prompt.trim() } : {}),
       ...(body.multipleChoiceEnabled !== undefined ? { multipleChoiceEnabled: body.multipleChoiceEnabled } : {}),
+      ...(body.responseLength !== undefined ? { responseLength: body.responseLength ?? null } : {}),
     })
     .where(eq(conversationPatterns.id, id))
     .returning();

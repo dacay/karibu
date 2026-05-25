@@ -53,6 +53,23 @@ function formatLearnerName(
 }
 
 /**
+ * Maps a pattern's response length setting to a system-prompt instruction.
+ * Returns null when no length is set (admin opted out).
+ */
+function responseLengthGuide(responseLength: string | null): string | null {
+  switch (responseLength) {
+    case 'short':
+      return 'RESPONSE LENGTH: Keep responses very short — 1 to 2 short sentences (roughly 15–30 words). Be conversational and get straight to the point with no preamble.';
+    case 'medium':
+      return 'RESPONSE LENGTH: Keep responses to a single solid paragraph (roughly 80–150 words), with room for a brief example where it helps.';
+    case 'long':
+      return 'RESPONSE LENGTH: Give thorough, detailed responses (200+ words), using multiple paragraphs to fully explain the topic.';
+    default:
+      return null;
+  }
+}
+
+/**
  * Build the system prompt for a microlearning chat session.
  */
 function buildMLSystemPrompt(
@@ -63,9 +80,15 @@ function buildMLSystemPrompt(
   isCompleted: boolean,
   organizationName: string,
   learnerName: string | null,
+  responseLength: string | null,
 ): string {
 
   const parts: string[] = [patternPrompt];
+
+  const lengthGuide = responseLengthGuide(responseLength);
+  if (lengthGuide) {
+    parts.push(`\n${lengthGuide}`);
+  }
 
   parts.push(`\nORGANIZATION: ${organizationName}`);
 
@@ -279,11 +302,13 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
   let multipleChoiceEnabled = false;
+  let responseLength: string | null = null;
   if (ml.patternId) {
     const [pattern] = await db
       .select({
         prompt: conversationPatterns.prompt,
         multipleChoiceEnabled: conversationPatterns.multipleChoiceEnabled,
+        responseLength: conversationPatterns.responseLength,
       })
       .from(conversationPatterns)
       .where(eq(conversationPatterns.id, ml.patternId))
@@ -292,6 +317,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
 
       patternPrompt = pattern.prompt;
       multipleChoiceEnabled = pattern.multipleChoiceEnabled;
+      responseLength = pattern.responseLength;
     }
   }
 
@@ -372,6 +398,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     isCompleted,
     organizationName,
     learnerName,
+    responseLength,
   );
 
   // Track whether the ML was completed during this request

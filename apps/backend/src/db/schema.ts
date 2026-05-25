@@ -253,6 +253,7 @@ export const conversationPatterns = pgTable('conversation_patterns', {
   prompt: text('prompt').notNull(),
   isBuiltIn: boolean('is_built_in').notNull().default(false),
   multipleChoiceEnabled: boolean('multiple_choice_enabled').notNull().default(false),
+  responseLength: text('response_length'), // null | 'short' | 'medium' | 'long' — guides LLM verbosity
   ...timestamps,
 }, (table) => [
   index('conversation_patterns_organization_id_idx').on(table.organizationId),
