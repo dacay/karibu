@@ -228,6 +228,7 @@ interface MlFormValues {
   subtopicIds: string[];
   patternId: string;
   avatarId: string;
+  confettiEnabled: boolean;
 }
 
 function MlForm({
@@ -254,6 +255,7 @@ function MlForm({
   const [subtopicIds, setSubtopicIds] = useState<string[]>(initial.subtopicIds ?? []);
   const [patternId, setPatternId] = useState(initial.patternId ?? "");
   const [avatarId, setAvatarId] = useState(initial.avatarId ?? "");
+  const [confettiEnabled, setConfettiEnabled] = useState(initial.confettiEnabled ?? false);
 
   const subtopicHasApproved = (s: { values: { approval: string }[] }) =>
     s.values.some((v) => v.approval === "approved");
@@ -416,8 +418,18 @@ function MlForm({
         </NativeSelect>
       </div>
 
+      <label className="flex items-center gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={confettiEnabled}
+          onChange={(e) => setConfettiEnabled(e.target.checked)}
+          className="rounded border-input"
+        />
+        <span className="text-sm">Show confetti on completion</span>
+      </label>
+
       <div className="flex gap-2">
-        <Button size="sm" disabled={!canSubmit || isLoading} onClick={() => { if (!canSubmit) return; onSave({ title, topicIds, subtopicIds, patternId, avatarId }); }}>
+        <Button size="sm" disabled={!canSubmit || isLoading} onClick={() => { if (!canSubmit) return; onSave({ title, topicIds, subtopicIds, patternId, avatarId, confettiEnabled }); }}>
           {isLoading ? <Spinner className="size-3 mr-1" /> : null}
           {submitLabel}
         </Button>
@@ -539,6 +551,7 @@ function MlRow({
           subtopicIds: ml.subtopicIds ?? [],
           patternId: ml.patternId ?? "",
           avatarId: ml.avatarId ?? "",
+          confettiEnabled: ml.confettiEnabled,
         }}
         topics={topics}
         patterns={patterns}
@@ -841,6 +854,7 @@ export function MicrolearningsSection() {
         patternId: v.patternId || null,
         avatarId: v.avatarId || null,
         sequenceId: null,
+        confettiEnabled: v.confettiEnabled,
       }),
     onSuccess: (data) => {
       invalidate();
@@ -859,6 +873,7 @@ export function MicrolearningsSection() {
         subtopicIds: v.subtopicIds,
         patternId: v.patternId || null,
         avatarId: v.avatarId || null,
+        confettiEnabled: v.confettiEnabled,
       }),
     onSuccess: () => { invalidate(); setEditingMlId(null); },
   });
