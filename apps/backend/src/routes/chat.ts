@@ -17,6 +17,7 @@ import type { UserAuthContext } from '../types/auth.js';
 import { openai, deepgram } from '../ai/mastra.js';
 import { saveChat, loadChat } from '../services/chat.js';
 import { queryDocuments } from '../services/chromadb.js';
+import { trackEvent, EVENTS } from '../utils/analytics.js';
 import { db } from '../db/index.js';
 import {
   microlearnings,
@@ -244,6 +245,8 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     return c.json({ error: 'Microlearning not found.' }, 404);
   }
 
+  trackEvent(c, EVENTS.messageSent, { chat_type: 'microlearning', microlearning_id: microlearningId });
+
   // Non-admin users: verify the ML is in an assigned sequence
   if (auth.role !== 'admin' && ml.sequenceId) {
 
@@ -460,6 +463,8 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
               justCompleted = true;
               logger.debug({ userId: auth.userId, microlearningId }, 'Microlearning marked as completed.');
 
+              trackEvent(c, EVENTS.microlearningCompleted, { microlearning_id: microlearningId, completion_path: 'tool' });
+
               // Fire-and-forget per-ML outbound completion webhook (used e.g. by
               // the Teambridge integration to mark the learner's verification on
               // their facility shifts). Failures handled inside notifyMlCompletion.
@@ -543,6 +548,8 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
               'Microlearning marked as completed by classifier safety net.',
             );
 
+            trackEvent(c, EVENTS.microlearningCompleted, { microlearning_id: microlearningId, completion_path: 'classifier' });
+
             if (ml.completionWebhookUrl) {
               void notifyMlCompletion({
                 url: ml.completionWebhookUrl,
@@ -583,6 +590,8 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
   const { chatId } = c.req.valid('json');
   const messages = c.req.valid('json').messages as UIMessage[];
   const auth = c.get('auth') as UserAuthContext;
+
+  trackEvent(c, EVENTS.messageSent, { chat_type: 'discussion' });
 
   const [[assistantOrg], [assistantLearner]] = await Promise.all([
     db

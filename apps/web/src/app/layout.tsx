@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import { QueryProvider } from "@/providers/QueryProvider";
+import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -19,7 +20,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <AnalyticsProvider>{children}</AnalyticsProvider>
+          </QueryProvider>
           <Analytics />
         </ThemeProvider>
       </body>

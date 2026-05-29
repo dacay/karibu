@@ -13,6 +13,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
 import { api, type Avatar as AvatarType } from "@/lib/api";
+import { startTimer, track, EVENTS } from "@/lib/analytics";
 import type { ChatAvatar } from "@/features/chat";
 import type { UIMessage } from "ai";
 import { getVersionedAssetUrl } from "@/lib/assets";
@@ -65,9 +66,14 @@ export default function MicrolearningChatPage() {
 
   // Invalidate the learner feed on unmount so "In Progress" is visible when
   // the user navigates back, without waiting for a manual refresh.
+  // Also start a dwell timer on mount and fire "Microlearning Viewed" on unmount
+  // (carrying $duration) so we capture views where the learner opened the ML but
+  // never sent a message.
   useEffect(() => {
+    startTimer(EVENTS.microlearningViewed);
     return () => {
       queryClient.invalidateQueries({ queryKey: ["learner", "feed"] });
+      track(EVENTS.microlearningViewed, { microlearning_id: id });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -9,10 +9,12 @@ import { errorReporterMiddleware } from './middleware/errorReporter.js'
 import { registerRoutes } from './routes/index.js'
 import { sql, testConnection } from './db/index.js'
 import { initErrorReporter } from './utils/errorReporter.js'
+import { initAnalytics } from './utils/analytics.js'
 import { verifyToken } from './utils/jwt.js'
 import { handleTTSStream } from './routes/tts-stream.js'
 
 initErrorReporter()
+initAnalytics()
 
 const app = new Hono()
 

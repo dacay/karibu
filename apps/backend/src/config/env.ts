@@ -37,6 +37,11 @@ const envSchema = z.object({
   // Error Reporting (Sentry)
   SENTRY_DSN: z.string().url().optional(),
 
+  // Product Analytics (Mixpanel) — optional; analytics is a no-op when unset.
+  // MIXPANEL_API_HOST: use 'api-eu.mixpanel.com' for EU data residency.
+  MIXPANEL_TOKEN: z.string().min(1).optional(),
+  MIXPANEL_API_HOST: z.string().default('api.mixpanel.com'),
+
   // AI / LLM
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_CHAT_MODEL: z.string().default('gpt-5.1'),

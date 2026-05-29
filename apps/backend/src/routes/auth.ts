@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { loginWithPassword, loginWithToken } from '../services/auth.js';
 import { logger } from '../config/logger.js';
+import { capture, EVENTS } from '../utils/analytics.js';
 
 const auth = new Hono();
 
@@ -34,6 +35,16 @@ auth.post('/login', zValidator('json', loginSchema), async (c) => {
         return c.json({ error: result.error }, 401);
       }
 
+      if (result.user) {
+        capture({
+          distinctId: result.user.id,
+          event: EVENTS.userLoggedIn,
+          role: result.user.role,
+          organizationId: result.user.organizationId,
+          props: { login_method: 'token' },
+        });
+      }
+
       return c.json({ token: result.token, user: result.user });
     }
 
@@ -43,6 +54,16 @@ auth.post('/login', zValidator('json', loginSchema), async (c) => {
 
     if (!result.success) {
       return c.json({ error: result.error }, 401);
+    }
+
+    if (result.user) {
+      capture({
+        distinctId: result.user.id,
+        event: EVENTS.userLoggedIn,
+        role: result.user.role,
+        organizationId: result.user.organizationId,
+        props: { login_method: 'password' },
+      });
     }
 
     return c.json({ token: result.token, user: result.user });
