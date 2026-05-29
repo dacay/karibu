@@ -33,6 +33,7 @@ teamRouter.get('/', async (c) => {
       email: users.email,
       firstName: users.firstName,
       lastName: users.lastName,
+      phoneNumber: users.phoneNumber,
       role: users.role,
       createdAt: users.createdAt,
       tokenId: authTokens.id,
@@ -61,6 +62,7 @@ teamRouter.get('/', async (c) => {
     email: row.email,
     firstName: row.firstName ?? null,
     lastName: row.lastName ?? null,
+    phoneNumber: row.phoneNumber ?? null,
     role: row.role,
     createdAt: row.createdAt,
     hasToken: !!row.tokenId,
@@ -75,6 +77,17 @@ teamRouter.get('/', async (c) => {
 const inviteSchema = z.object({
   emails: z.string().min(1),
 });
+
+// Phone numbers are stored in E.164 format (e.g. +14155552671). An empty string
+// is treated as "no phone number" so the field can be cleared from the UI.
+const phoneNumberSchema = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+  z
+    .string()
+    .trim()
+    .regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g. +14155552671).')
+    .nullable()
+);
 
 /**
  * POST /team/invite
@@ -227,6 +240,143 @@ teamRouter.post('/invite', zValidator('json', inviteSchema), async (c) => {
   }
 
   return c.json({ invited, alreadyExists, failed }, 201);
+})
+
+const inviteOneSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email format.'),
+  firstName: z.string().trim().max(100).nullable().optional(),
+  lastName: z.string().trim().max(100).nullable().optional(),
+  phoneNumber: phoneNumberSchema.optional(),
+  sendEmail: z.boolean().optional().default(true),
+});
+
+/**
+ * POST /team/invite-one
+ * Invite a single user, capturing their name and phone number up front.
+ * Only the email is required. When `sendEmail` is false, no invitation email is
+ * sent — the caller is expected to share the returned sign-in link themselves.
+ */
+teamRouter.post('/invite-one', zValidator('json', inviteOneSchema), async (c) => {
+
+  const auth = c.get('auth');
+  const organization = c.get('organization');
+  const { email, firstName, lastName, phoneNumber, sendEmail } = c.req.valid('json');
+
+  // The caller can opt out of sending an email; service-token callers never
+  // trigger emails (they own delivery via the returned link).
+  const shouldSendEmail = sendEmail && auth.kind !== 'service';
+
+  // Check if the user already exists in this organization
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.email, email),
+        eq(users.organizationId, auth.organizationId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+
+    // Reuse the most recent token (or mint one) so we can always return a link
+    const [latestToken] = await db
+      .select({ token: authTokens.token })
+      .from(authTokens)
+      .where(eq(authTokens.userId, existing.id))
+      .orderBy(desc(authTokens.createdAt))
+      .limit(1);
+
+    let token: string;
+    if (latestToken) {
+      token = latestToken.token;
+    } else {
+      token = generateLoginToken();
+      const expiresAt = new Date();
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      await db.insert(authTokens).values({ userId: existing.id, token, expiresAt });
+    }
+
+    if (shouldSendEmail) {
+      await sendInvitationEmail({
+        to: email,
+        organizationName: organization.name,
+        subdomain: organization.subdomain,
+        token,
+      });
+    }
+
+    return c.json({
+      userId: existing.id,
+      email,
+      link: buildOrgUrl(organization.subdomain, '/', { token }),
+      alreadyExisted: true,
+      emailSent: shouldSendEmail,
+    });
+  }
+
+  // Create user with a random unusable password and the provided profile fields
+  const randomPassword = await hashPassword(generateLoginToken());
+
+  const [newUser] = await db
+    .insert(users)
+    .values({
+      email,
+      password: randomPassword,
+      role: 'user',
+      organizationId: auth.organizationId,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
+      phoneNumber: phoneNumber ?? null,
+    })
+    .returning();
+
+  // Create auth token (1-year expiry)
+  const token = generateLoginToken();
+  const expiresAt = new Date();
+  expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+  await db.insert(authTokens).values({ userId: newUser.id, token, expiresAt });
+
+  if (shouldSendEmail) {
+    await sendInvitationEmail({
+      to: email,
+      organizationName: organization.name,
+      subdomain: organization.subdomain,
+      token,
+    });
+  }
+
+  // Add user to "All Members" group, creating it first if needed
+  let [allMembersGroup] = await db
+    .select()
+    .from(userGroups)
+    .where(and(eq(userGroups.organizationId, auth.organizationId), eq(userGroups.isAll, true)))
+    .limit(1);
+
+  if (!allMembersGroup) {
+    [allMembersGroup] = await db
+      .insert(userGroups)
+      .values({ organizationId: auth.organizationId, name: 'All Members', isAll: true })
+      .returning();
+  }
+
+  await db.insert(userGroupMembers).values({ groupId: allMembersGroup.id, userId: newUser.id });
+
+  logger.debug({ email, userId: newUser.id, organizationId: auth.organizationId, emailSent: shouldSendEmail }, 'User invited.');
+
+  return c.json({
+    userId: newUser.id,
+    email,
+    link: buildOrgUrl(organization.subdomain, '/', { token }),
+    alreadyExisted: false,
+    emailSent: shouldSendEmail,
+  }, 201);
 })
 
 /**
@@ -390,22 +540,23 @@ teamRouter.post('/:userId/regenerate-token', async (c) => {
   return c.json({ success: true });
 })
 
-const updateNameSchema = z.object({
+const updateUserSchema = z.object({
   firstName: z.string().trim().max(100).nullable(),
   lastName: z.string().trim().max(100).nullable(),
+  phoneNumber: phoneNumberSchema.optional(),
 });
 
 /**
  * PATCH /team/:userId
- * Update a user's first and last name.
- * Admins can edit any non-admin user's name.
- * An admin can only edit their own name, not another admin's name.
+ * Update a user's first name, last name, and phone number.
+ * Admins can edit any non-admin user's profile.
+ * An admin can only edit their own profile, not another admin's.
  */
-teamRouter.patch('/:userId', zValidator('json', updateNameSchema), async (c) => {
+teamRouter.patch('/:userId', zValidator('json', updateUserSchema), async (c) => {
 
   const auth = c.get('auth') as UserAuthContext;
   const userId = c.req.param('userId');
-  const { firstName, lastName } = c.req.valid('json');
+  const { firstName, lastName, phoneNumber } = c.req.valid('json');
 
   // Verify user belongs to this organization
   const [user] = await db
@@ -425,18 +576,30 @@ teamRouter.patch('/:userId', zValidator('json', updateNameSchema), async (c) => 
   }
 
   // Admins can edit non-admin users, or their own profile.
-  // They cannot edit another admin's name.
+  // They cannot edit another admin's profile.
   if (user.role === 'admin' && userId !== auth.userId) {
 
-    return c.json({ error: 'Cannot edit another admin\'s name.' }, 403);
+    return c.json({ error: 'Cannot edit another admin\'s profile.' }, 403);
+  }
+
+  // Only update phoneNumber when the key is provided, so callers that omit it
+  // (e.g. older clients) leave the existing value untouched.
+  const updates: { firstName: string | null; lastName: string | null; phoneNumber?: string | null } = {
+    firstName: firstName ?? null,
+    lastName: lastName ?? null,
+  };
+
+  if (phoneNumber !== undefined) {
+
+    updates.phoneNumber = phoneNumber;
   }
 
   await db
     .update(users)
-    .set({ firstName: firstName ?? null, lastName: lastName ?? null })
+    .set(updates)
     .where(eq(users.id, userId));
 
-  logger.debug({ userId, firstName, lastName }, 'User name updated.');
+  logger.debug({ userId, firstName, lastName, phoneNumber }, 'User profile updated.');
 
   return c.json({ success: true });
 })

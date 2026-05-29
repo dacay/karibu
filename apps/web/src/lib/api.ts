@@ -226,6 +226,7 @@ export interface UserProfile {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  phoneNumber: string | null;
   role: "admin" | "user";
   organizationId: string;
   preferredAvatarId: string | null;
@@ -265,6 +266,7 @@ export interface TeamMember {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  phoneNumber: string | null;
   role: "admin" | "user";
   createdAt: string;
   hasToken: boolean;
@@ -277,6 +279,14 @@ export interface InviteResult {
   invited: { email: string; userId: string; link: string }[];
   alreadyExists: { email: string; userId: string; link: string }[];
   failed: string[];
+}
+
+export interface InviteOneResult {
+  userId: string;
+  email: string;
+  link: string;
+  alreadyExisted: boolean;
+  emailSent: boolean;
 }
 
 export interface OrgConfig {
@@ -611,6 +621,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ emails }),
       }),
+    inviteOne: (body: {
+      email: string;
+      firstName: string | null;
+      lastName: string | null;
+      phoneNumber: string | null;
+      sendEmail: boolean;
+    }) =>
+      request<InviteOneResult>("/team/invite-one", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     getLink: (userId: string) =>
       request<{ link: string }>(`/team/${userId}/link`),
     resendInvite: (userId: string) =>
@@ -619,7 +640,7 @@ export const api = {
       request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
     remove: (userId: string) =>
       request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
-    updateName: (userId: string, body: { firstName: string | null; lastName: string | null }) =>
+    updateMember: (userId: string, body: { firstName: string | null; lastName: string | null; phoneNumber: string | null }) =>
       request<{ success: boolean }>(`/team/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(body),

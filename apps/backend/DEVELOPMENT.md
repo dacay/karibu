@@ -294,6 +294,30 @@ The team-invite endpoint also doubles as a sign-in-link source for integrations,
 
 For pre-existing users, the latest `auth_tokens` row is reused to build the link (or a new token is minted if none exist). This matters because the Teambridge integration calls `/team/invite` for every fresh nurse-facility onboarding and needs a usable link regardless of whether the Karibu user was just created or already a member of the org.
 
+### `/team/invite-one` (single invite)
+
+`POST /team/invite` takes a comma-separated string of emails and is the bulk path. `POST /team/invite-one` is the single-user path used by the admin UI's "Invite one" form: it captures a profile up front and can suppress the invitation email.
+
+```ts
+// request
+{
+  email:       string,          // required
+  firstName?:  string | null,
+  lastName?:   string | null,
+  phoneNumber?: string | null,  // E.164 (e.g. +14155552671); "" is treated as null
+  sendEmail?:  boolean,         // default true
+}
+
+// response
+{ userId, email, link, alreadyExisted: boolean, emailSent: boolean }
+```
+
+When `sendEmail` is false (or the caller is a service token) no invitation email is sent; the admin shares the returned `link` themselves. Like `/team/invite`, a pre-existing user reuses (or mints) an `auth_tokens` row so a link is always returned.
+
+### Editable member profile
+
+`PATCH /team/:userId` updates `firstName`, `lastName`, and `phoneNumber`. Phone is stored in E.164 format; an empty string clears it. `phoneNumber` is optional in the payload, so a caller that omits the key leaves the stored value untouched. Admins may edit any non-admin member and their own profile, but not another admin's.
+
 ## AI Assistant Notes
 
 This project includes semantic code search embeddings (qmd) for AI-powered codebase exploration.

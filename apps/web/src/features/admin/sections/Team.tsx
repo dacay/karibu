@@ -18,11 +18,13 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   ArrowLeft,
   Plus,
   Pencil,
   UsersRound,
   Search,
+  Phone,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +39,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { api, type TeamMember, type InviteResult, type UserGroup } from "@/lib/api";
 import { LearnerDetailView } from "./LearnerDetail";
 
@@ -292,6 +301,175 @@ function InviteForm({ onClose }: InviteFormProps) {
   );
 }
 
+// ─── Single invite form ───────────────────────────────────────────────────────
+
+interface SingleInviteFormProps {
+  onClose: () => void;
+}
+
+function SingleInviteForm({ onClose }: SingleInviteFormProps) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [sendEmail, setSendEmail] = useState(true);
+  const [result, setResult] = useState<{ link: string; alreadyExisted: boolean; emailSent: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const inviteMutation = useMutation({
+    mutationFn: () =>
+      api.team.inviteOne({
+        email: email.trim().toLowerCase(),
+        firstName: firstName.trim() || null,
+        lastName: lastName.trim() || null,
+        phoneNumber: phoneNumber.trim() || null,
+        sendEmail,
+      }),
+    onSuccess: (data) => {
+      setResult({ link: data.link, alreadyExisted: data.alreadyExisted, emailSent: data.emailSent });
+      queryClient.invalidateQueries({ queryKey: ["team"] });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (isValidEmail(email)) {
+      inviteMutation.mutate();
+    }
+  };
+
+  const copyLink = () => {
+    if (result) {
+      navigator.clipboard.writeText(result.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const emailValid = isValidEmail(email);
+
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-3 pt-4 px-5">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Invite a member</CardTitle>
+          <Button variant="ghost" size="icon" className="size-7" onClick={onClose}>
+            <X className="size-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-5 pb-5 space-y-4">
+        {!result ? (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">
+                Email <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="email"
+                placeholder="alice@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">First name</label>
+                <Input
+                  placeholder="First"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">Last name</label>
+                <Input
+                  placeholder="Last"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">Phone number</label>
+              <Input
+                type="tel"
+                placeholder="+14155552671"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <Checkbox
+                checked={sendEmail}
+                onCheckedChange={(checked) => setSendEmail(checked === true)}
+              />
+              Send invitation email
+            </label>
+            {inviteMutation.isError && (
+              <p className="text-sm text-destructive">{(inviteMutation.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button type="submit" size="sm" disabled={inviteMutation.isPending || !emailValid}>
+                {inviteMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
+                {sendEmail ? "Send invitation" : "Add member"}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm">
+              {result.alreadyExisted
+                ? "This person is already a member."
+                : result.emailSent
+                  ? "Member added and invitation email sent."
+                  : "Member added."}
+            </p>
+            {!result.emailSent && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  No email was sent. Share this sign-in link with them directly:
+                </p>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={result.link} className="text-xs" />
+                  <Button type="button" size="sm" variant="outline" onClick={copyLink}>
+                    {copied ? <Check className="size-3.5 text-green-600" /> : <Link className="size-3.5" />}
+                  </Button>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setResult(null);
+                  setEmail("");
+                  setFirstName("");
+                  setLastName("");
+                  setPhoneNumber("");
+                  setSendEmail(true);
+                }}
+              >
+                Invite another
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Member row actions ───────────────────────────────────────────────────────
 
 interface MemberActionsProps {
@@ -405,6 +583,12 @@ function MemberRow({ member, isLast, isPending, canEditName, onAction, copiedUse
             <div className={["truncate", displayName ? "text-xs text-muted-foreground" : ""].join(" ")}>
               {member.email}
             </div>
+            {member.phoneNumber && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                <Phone className="size-3 shrink-0" />
+                {member.phoneNumber}
+              </div>
+            )}
           </div>
           {isPending && <Spinner className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
@@ -436,7 +620,7 @@ const MEMBERS_PER_PAGE = 10;
 
 function MembersTab() {
   const queryClient = useQueryClient();
-  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteMode, setInviteMode] = useState<"single" | "bulk" | null>(null);
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -445,6 +629,7 @@ function MembersTab() {
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
+  const [editPhoneNumber, setEditPhoneNumber] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["team"],
@@ -491,9 +676,9 @@ function MembersTab() {
     },
   });
 
-  const updateNameMutation = useMutation({
-    mutationFn: ({ userId, firstName, lastName }: { userId: string; firstName: string | null; lastName: string | null }) =>
-      api.team.updateName(userId, { firstName, lastName }),
+  const updateMemberMutation = useMutation({
+    mutationFn: ({ userId, firstName, lastName, phoneNumber }: { userId: string; firstName: string | null; lastName: string | null; phoneNumber: string | null }) =>
+      api.team.updateMember(userId, { firstName, lastName, phoneNumber }),
     onSuccess: () => {
       setEditingMember(null);
       queryClient.invalidateQueries({ queryKey: ["team"] });
@@ -513,6 +698,7 @@ function MembersTab() {
         setEditingMember(member);
         setEditFirstName(member.firstName ?? "");
         setEditLastName(member.lastName ?? "");
+        setEditPhoneNumber(member.phoneNumber ?? "");
       }
       return;
     }
@@ -568,11 +754,26 @@ function MembersTab() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Members</p>
-        {!showInviteForm && (
-          <Button size="sm" onClick={() => setShowInviteForm(true)}>
-            <UserPlus className="size-4 mr-1.5" />
-            Invite
-          </Button>
+        {!inviteMode && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm">
+                <UserPlus className="size-4 mr-1.5" />
+                Invite
+                <ChevronDown className="size-3.5 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => setInviteMode("single")}>
+                <UserPlus className="size-4 mr-2" />
+                Invite one
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => setInviteMode("bulk")}>
+                <Users className="size-4 mr-2" />
+                Invite multiple
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
@@ -586,24 +787,29 @@ function MembersTab() {
         />
       </div>
 
-      {showInviteForm && (
-        <InviteForm onClose={() => setShowInviteForm(false)} />
+      {inviteMode === "single" && (
+        <SingleInviteForm onClose={() => setInviteMode(null)} />
+      )}
+
+      {inviteMode === "bulk" && (
+        <InviteForm onClose={() => setInviteMode(null)} />
       )}
 
       {/* Edit name dialog */}
       <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit name</DialogTitle>
+            <DialogTitle>Edit member</DialogTitle>
           </DialogHeader>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               if (editingMember) {
-                updateNameMutation.mutate({
+                updateMemberMutation.mutate({
                   userId: editingMember.id,
                   firstName: editFirstName.trim() || null,
                   lastName: editLastName.trim() || null,
+                  phoneNumber: editPhoneNumber.trim() || null,
                 });
               }
             }}
@@ -628,12 +834,21 @@ function MembersTab() {
                 />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground">Phone number</label>
+              <Input
+                type="tel"
+                placeholder="+14155552671"
+                value={editPhoneNumber}
+                onChange={(e) => setEditPhoneNumber(e.target.value)}
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMember(null)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={updateNameMutation.isPending}>
-                {updateNameMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
+              <Button type="submit" size="sm" disabled={updateMemberMutation.isPending}>
+                {updateMemberMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
                 Save
               </Button>
             </div>
