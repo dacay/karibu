@@ -279,7 +279,9 @@ export function LearnerRoot() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <OnboardingModal />
+      {process.env.NEXT_PUBLIC_LEARNER_ONBOARDING_ENABLED === "true" && (
+        <OnboardingModal />
+      )}
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="flex h-16 items-center justify-between border-b px-6">
         {!logoLoading && (
