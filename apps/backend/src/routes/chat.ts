@@ -16,7 +16,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import type { UserAuthContext } from '../types/auth.js';
 import { openai, deepgram } from '../ai/mastra.js';
 import { saveChat, loadChat } from '../services/chat.js';
-import { queryDocuments } from '../services/chromadb.js';
+import { queryDocuments, queryManual } from '../services/chromadb.js';
 import { trackEvent, EVENTS } from '../utils/analytics.js';
 import { db } from '../db/index.js';
 import {
@@ -644,26 +644,34 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
     ? `\n\nLEARNER: ${assistantLearnerName}\nAddress the learner by their first name when it feels natural.`
     : '';
 
-  const assistantSystemPrompt = `You are a helpful assistant for the organization "${assistantOrgName}".${learnerLine} Answer questions clearly and concisely. You have access to organizational knowledge through the searchKnowledge tool — call it before answering whenever the user is asking for information.
+  const assistantSystemPrompt = `You are a helpful assistant for the organization "${assistantOrgName}".${learnerLine} Answer questions clearly and concisely.
 
-The tool returns results in labeled sections:
+You have two knowledge tools:
+- searchKnowledge — searches this organization's own knowledge base. Call it before answering whenever the user is asking for information about their organization.
+- searchKaribuManual — searches the Karibu product manual. Call it whenever the user asks how to use Karibu, what a Karibu feature does, or how the platform works.
+
+searchKnowledge returns results in labeled sections:
 - [Source Knowledge] — curated, verified organizational knowledge. Prioritize this.
 - [Document Knowledge] — relevant excerpts from uploaded documents. Use when source knowledge is insufficient.
 - If neither section appears, no organizational knowledge was found.
 
-IMPORTANT: Never include the section labels [Source Knowledge] or [Document Knowledge] in your response text. They are internal markers only.
+searchKaribuManual returns results in a [Karibu Manual] section, or a not-found message if nothing relevant exists.
+
+IMPORTANT: Never include the section labels [Source Knowledge], [Document Knowledge], or [Karibu Manual] in your response text. They are internal markers only.
 
 You MUST call reportSource before writing your response, describing what your response will be based on:
 - "source" if your response will convey information from [Source Knowledge]
 - "document" if your response will convey information from [Document Knowledge]
+- "manual" if your response will convey information from the [Karibu Manual]
 - "general" if your response will convey information from your own general knowledge (search results were irrelevant or you didn't search)
 - "conversational" if your response does not convey factual information from a knowledge source — e.g. greetings, thanks, small talk, acknowledgments, clarifying questions back to the user, or describing your own capabilities and how you can help
 ${HIPAA_GUARDRAIL}`;
 
   // Track the best knowledge source used during this response:
   // null = tool not called, 'source' = approved values, 'document' = vector DB,
-  // 'general' = LLM only, 'conversational' = non-informational reply (no badge shown)
-  let dataSource: 'source' | 'document' | 'general' | 'conversational' | null = null;
+  // 'manual' = Karibu manual, 'general' = LLM only,
+  // 'conversational' = non-informational reply (no badge shown)
+  let dataSource: 'source' | 'document' | 'manual' | 'general' | 'conversational' | null = null;
   let searchWasCalled = false;
 
   const result = streamText({
@@ -723,14 +731,34 @@ ${HIPAA_GUARDRAIL}`;
           return sections.join('\n\n---\n\n');
         },
       },
+      searchKaribuManual: {
+        description: 'Search the Karibu product manual (the Karibu Knowledge Base) for information about how to use Karibu, its features, and how the platform works. Call this whenever the user asks about using Karibu itself.',
+        inputSchema: z.object({
+          query: z.string().describe('Search query to find relevant Karibu manual content'),
+        }),
+        execute: async ({ query }) => {
+          searchWasCalled = true;
+          try {
+            const results = await queryManual(query, 5);
+            const docs = results.documents.filter(Boolean) as string[];
+            if (docs.length === 0) {
+              return 'No Karibu manual information found for this query.';
+            }
+            return `[Karibu Manual]\n${docs.join('\n\n')}`;
+          } catch (err) {
+            logger.warn({ err }, 'Karibu manual search failed during assistant chat.');
+            return 'Karibu manual search unavailable.';
+          }
+        },
+      },
       reportSource: {
         description: 'Report what your response will be based on. Call this before writing your response.',
         inputSchema: z.object({
-          source: z.enum(['source', 'document', 'general', 'conversational']).describe(
-            '"source" if response conveys Source Knowledge, "document" if response conveys Document Knowledge, "general" if response conveys factual information from your own general knowledge, "conversational" if response does not convey factual information from a knowledge source (greetings, small talk, acknowledgments, clarifying questions, or describing your own capabilities)',
+          source: z.enum(['source', 'document', 'manual', 'general', 'conversational']).describe(
+            '"source" if response conveys Source Knowledge, "document" if response conveys Document Knowledge, "manual" if response conveys information from the Karibu Manual, "general" if response conveys factual information from your own general knowledge, "conversational" if response does not convey factual information from a knowledge source (greetings, small talk, acknowledgments, clarifying questions, or describing your own capabilities)',
           ),
         }),
-        execute: async ({ source }: { source: 'source' | 'document' | 'general' | 'conversational' }) => {
+        execute: async ({ source }: { source: 'source' | 'document' | 'manual' | 'general' | 'conversational' }) => {
           dataSource = source;
           return 'Recorded.';
         },

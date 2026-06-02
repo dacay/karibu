@@ -5,6 +5,7 @@ import { embedText, embedTexts } from './embeddings.js';
 
 let chromaClient: CloudClient | null = null;
 let documentCollection: Collection | null = null;
+let manualCollection: Collection | null = null;
 
 const getChromaClient = (): CloudClient => {
 
@@ -42,6 +43,86 @@ export const getDocumentCollection = async (): Promise<Collection> => {
   logger.info({ collection: env.CHROMA_COLLECTION_NAME }, 'ChromaDB collection ready.');
 
   return documentCollection;
+}
+
+/**
+ * Get or create the central Karibu manual collection in ChromaDB.
+ * This collection is organization-agnostic: it holds product documentation
+ * about how to use Karibu and is shared across all organizations.
+ */
+export const getManualCollection = async (): Promise<Collection> => {
+
+  if (manualCollection) return manualCollection;
+
+  const client = getChromaClient();
+
+  const embeddingFunction: EmbeddingFunction = {
+    generate: (texts: string[]) => embedTexts(texts),
+  };
+
+  manualCollection = await client.getOrCreateCollection({
+    name: env.CHROMA_MANUAL_COLLECTION_NAME,
+    embeddingFunction,
+    metadata: { description: 'Karibu product manual — how to use Karibu (shared across all organizations)' },
+  });
+
+  logger.info({ collection: env.CHROMA_MANUAL_COLLECTION_NAME }, 'ChromaDB manual collection ready.');
+
+  return manualCollection;
+}
+
+export interface AddManualChunksParams {
+  sourceId: string;
+  chunks: string[];
+  embeddings: number[][];
+  filename: string;
+}
+
+/**
+ * Add Karibu manual text chunks to the central (org-agnostic) collection.
+ * Chunks are keyed by sourceId so a re-upload of the same source can be replaced.
+ */
+export const addManualChunks = async ({
+  sourceId,
+  chunks,
+  embeddings,
+  filename,
+}: AddManualChunksParams): Promise<string[]> => {
+
+  const collection = await getManualCollection();
+
+  const ids = chunks.map((_, i) => `${sourceId}_chunk_${i}`);
+
+  const metadatas = chunks.map(() => ({
+    sourceId,
+    filename,
+    addedAt: new Date().toISOString(),
+  }));
+
+  await collection.add({
+    ids,
+    documents: chunks,
+    embeddings,
+    metadatas,
+  });
+
+  logger.info({ sourceId, chunkCount: chunks.length }, 'Manual chunks added to ChromaDB.');
+
+  return ids;
+}
+
+/**
+ * Delete all manual chunks for a given sourceId from the central collection.
+ */
+export const deleteManualChunks = async (sourceId: string): Promise<void> => {
+
+  const collection = await getManualCollection();
+
+  await collection.delete({
+    where: { sourceId },
+  });
+
+  logger.info({ sourceId }, 'Manual chunks deleted from ChromaDB.');
 }
 
 export interface AddDocumentChunksParams {
@@ -126,6 +207,32 @@ export const queryDocuments = async (
     queryEmbeddings: [queryEmbedding],
     nResults,
     where: { organizationId },
+  });
+
+  return {
+    ids: results.ids[0] ?? [],
+    documents: results.documents[0] ?? [],
+    distances: results.distances?.[0] ?? null,
+    metadatas: (results.metadatas[0] ?? []) as (Record<string, string> | null)[],
+  };
+}
+
+/**
+ * Query the central Karibu manual collection for chunks relevant to a query string.
+ * Unlike queryDocuments, this is NOT scoped to an organization — the manual is shared.
+ */
+export const queryManual = async (
+  queryText: string,
+  nResults = 5
+): Promise<QueryResult> => {
+
+  const collection = await getManualCollection();
+
+  const queryEmbedding = await embedText(queryText);
+
+  const results = await collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults,
   });
 
   return {
