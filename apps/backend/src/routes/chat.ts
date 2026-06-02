@@ -11,7 +11,7 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, or, isNull } from 'drizzle-orm';
 import { authMiddleware } from '../middleware/auth.js';
 import type { UserAuthContext } from '../types/auth.js';
 import { openai, deepgram } from '../ai/mastra.js';
@@ -23,6 +23,7 @@ import {
   microlearnings,
   microlearningProgress,
   conversationPatterns,
+  avatars,
   dnaTopics,
   dnaSubtopics,
   dnaValues,
@@ -82,9 +83,16 @@ function buildMLSystemPrompt(
   organizationName: string,
   learnerName: string | null,
   responseLength: string | null,
+  persona: { name: string; personality: string } | null,
 ): string {
 
   const parts: string[] = [patternPrompt];
+
+  if (persona) {
+    parts.push(
+      `\nYOUR PERSONA: You are ${persona.name}. The text below — written in your own voice — is the character and speaking style to embody for the whole session. Let it shape your tone, warmth, and word choice, layered on top of the teaching approach above. It must never override the instructional method, the learning objectives, or the organizational source of truth.\n${persona.personality}`,
+    );
+  }
 
   const lengthGuide = responseLengthGuide(responseLength);
   if (lengthGuide) {
@@ -294,13 +302,36 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       .where(eq(organizations.id, auth.organizationId))
       .limit(1),
     db
-      .select({ firstName: users.firstName, lastName: users.lastName })
+      .select({ firstName: users.firstName, lastName: users.lastName, preferredAvatarId: users.preferredAvatarId })
       .from(users)
       .where(eq(users.id, auth.userId))
       .limit(1),
   ]);
   const organizationName = org?.name ?? 'your organization';
   const learnerName = formatLearnerName(learner?.firstName, learner?.lastName);
+
+  // Resolve the avatar whose persona drives the session. This mirrors the
+  // frontend's voice precedence so the persona matches the voice the learner
+  // hears: learners use their preferred avatar when set, otherwise the ML's
+  // own avatar; admins always use the ML's avatar.
+  let persona: { name: string; personality: string } | null = null;
+  const preferredAvatarId = auth.role !== 'admin' ? learner?.preferredAvatarId ?? null : null;
+  const avatarCandidateIds = [preferredAvatarId, ml.avatarId].filter((id): id is string => Boolean(id));
+  if (avatarCandidateIds.length > 0) {
+    const avatarRows = await db
+      .select({ id: avatars.id, name: avatars.name, personality: avatars.personality })
+      .from(avatars)
+      .where(and(
+        inArray(avatars.id, avatarCandidateIds),
+        or(isNull(avatars.organizationId), eq(avatars.organizationId, auth.organizationId)),
+      ));
+    const chosen =
+      avatarRows.find((a) => a.id === preferredAvatarId) ??
+      avatarRows.find((a) => a.id === ml.avatarId);
+    if (chosen) {
+      persona = { name: chosen.name, personality: chosen.personality };
+    }
+  }
 
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
@@ -402,6 +433,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     organizationName,
     learnerName,
     responseLength,
+    persona,
   );
 
   // Track whether the ML was completed during this request

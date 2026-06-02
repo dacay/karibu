@@ -204,6 +204,19 @@ export const buildAvatarImageKey = (subdomain: string, avatarId: string, filenam
 }
 
 /**
+ * Build the S3 key for a built-in (global) avatar image.
+ * Built-in avatars are not scoped to an organization, so they live under a
+ * shared "builtin" namespace: {prefix}/builtin/avatars/{slug}.{ext}
+ */
+export const buildBuiltInAvatarImageKey = (slug: string, ext: string): string => {
+
+  const suffix = ext.startsWith('.') ? ext : `.${ext}`;
+  const prefix = env.S3_ASSETS_KEY_PREFIX ? `${env.S3_ASSETS_KEY_PREFIX}/` : '';
+
+  return `${prefix}builtin/avatars/${slug}${suffix}`;
+}
+
+/**
  * Build the S3 key for an org logo.
  * Pattern: {prefix}/{subdomain}/logo-{variant}.png
  */

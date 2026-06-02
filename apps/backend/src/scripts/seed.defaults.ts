@@ -1,8 +1,12 @@
 import 'dotenv/config';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { eq, and, isNull } from 'drizzle-orm';
-import { conversationPatterns } from '../db/schema.js';
+import { conversationPatterns, avatars } from '../db/schema.js';
+import { uploadToAssetsBucket, buildBuiltInAvatarImageKey } from '../services/s3.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -117,6 +121,153 @@ Interaction rules:
   },
 ];
 
+// Built-in avatars available to all organizations.
+// organizationId is null — these are global personas.
+// `imageFile` refers to a bundled image under apps/backend/assets/avatars/.
+// `voiceId` is a Deepgram Aura-2 voice id (see DEEPGRAM_VOICES in the web app).
+// `personality` is written in the first person: it is both spoken as the avatar's
+// self-introduction ("Hi, I'm {name}. {personality}") and injected into the chat
+// system prompt to shape the AI's tone — so keep it short and in-character.
+const BUILT_IN_AVATARS: Array<{
+  slug: string;
+  name: string;
+  personality: string;
+  voiceId: string;
+  imageFile: string;
+}> = [
+  {
+    slug: 'amara',
+    name: 'Amara',
+    voiceId: 'aura-2-athena-en', // Clear, authoritative
+    imageFile: 'amara.jpg',
+    personality:
+      "I'm a leadership coach who's spent two decades in the boardroom. I'll keep things warm but direct — I believe in you, and I'll hold you to a high bar with a bit of dry humor along the way.",
+  },
+  {
+    slug: 'mei',
+    name: 'Mei',
+    voiceId: 'aura-2-aurora-en', // Bright, energetic
+    imageFile: 'mei.jpg',
+    personality:
+      "I'm your upbeat study buddy — curious, quick to laugh, and always cheering you on. I like everyday examples and treating this like a shared adventure rather than a test.",
+  },
+  {
+    slug: 'nora',
+    name: 'Nora',
+    voiceId: 'aura-2-asteria-en', // Warm and friendly
+    imageFile: 'nora.jpg',
+    personality:
+      "I've spent years on busy hospital floors, so I stay calm, practical, and caring. I'll break things into clear next steps, check that you're with me, and treat mistakes as just part of getting better.",
+  },
+  {
+    slug: 'julian',
+    name: 'Julian',
+    voiceId: 'aura-2-orion-en', // Deep, resonant
+    imageFile: 'julian.jpg',
+    personality:
+      "I'm an analytical, evidence-first thinker — I like to gather the facts and reason them through carefully. I'm soft-spoken and precise, and I'll gently nudge you to explain why an answer is right, not just guess.",
+  },
+  {
+    slug: 'diego',
+    name: 'Diego',
+    voiceId: 'aura-2-apollo-en', // Clear, engaging
+    imageFile: 'diego.jpg',
+    personality:
+      "I'm the easygoing type who learns by tinkering and explains things like I would to a friend over coffee. I keep it low-pressure, lean on plain language and quick analogies, and we'll just try things until they click.",
+  },
+];
+
+// Maps file extensions to the MIME types accepted by the avatars feature.
+const IMAGE_CONTENT_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+// Bundled avatar images live at apps/backend/assets/avatars/, two levels up from
+// this script whether it runs from src/scripts (tsx) or dist/scripts (built).
+const AVATAR_ASSETS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'avatars');
+
+/**
+ * Upload a built-in avatar's bundled image to the assets bucket and return its key.
+ * Returns null (and logs a warning) when the file is missing or S3 is unavailable,
+ * so seeding still succeeds without an image rather than aborting.
+ */
+async function uploadBuiltInAvatarImage(slug: string, imageFile: string): Promise<{ key: string; bucket: string } | null> {
+
+  const ext = imageFile.includes('.') ? imageFile.split('.').pop()!.toLowerCase() : '';
+  const contentType = IMAGE_CONTENT_TYPES[ext];
+
+  if (!contentType) {
+    console.warn(`  ! Skipping image for ${slug}: unsupported extension "${ext}".`);
+    return null;
+  }
+
+  let buffer: Buffer;
+
+  try {
+    buffer = await readFile(join(AVATAR_ASSETS_DIR, imageFile));
+  } catch {
+    console.warn(`  ! Image "${imageFile}" not found in ${AVATAR_ASSETS_DIR}; seeding ${slug} without an image.`);
+    return null;
+  }
+
+  const key = buildBuiltInAvatarImageKey(slug, ext);
+
+  try {
+    const { s3Bucket } = await uploadToAssetsBucket(key, buffer, contentType);
+    return { key, bucket: s3Bucket };
+  } catch (err) {
+    console.warn(`  ! Failed to upload image for ${slug} (is S3 configured?); seeding without an image.`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function seedBuiltInAvatars(dbInstance: PostgresJsDatabase<any>) {
+  console.log('Seeding built-in avatars...');
+
+  for (const avatar of BUILT_IN_AVATARS) {
+    const [existing] = await dbInstance
+      .select()
+      .from(avatars)
+      .where(and(eq(avatars.name, avatar.name), isNull(avatars.organizationId)))
+      .limit(1);
+
+    const image = await uploadBuiltInAvatarImage(avatar.slug, avatar.imageFile);
+
+    if (existing) {
+      await dbInstance
+        .update(avatars)
+        .set({
+          personality: avatar.personality,
+          voiceId: avatar.voiceId,
+          // Only overwrite the image when we successfully uploaded a new one.
+          ...(image ? { imageS3Key: image.key, imageS3Bucket: image.bucket } : {}),
+        })
+        .where(eq(avatars.id, existing.id));
+      console.log(`  Updated avatar: ${avatar.name}`);
+      continue;
+    }
+
+    await dbInstance.insert(avatars).values({
+      organizationId: null,
+      name: avatar.name,
+      personality: avatar.personality,
+      voiceId: avatar.voiceId,
+      imageS3Key: image?.key ?? null,
+      imageS3Bucket: image?.bucket ?? null,
+      isBuiltIn: true,
+    });
+
+    console.log(`  Created avatar: ${avatar.name}`);
+  }
+
+  console.log('Built-in avatars seeded.');
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
   console.log('Seeding built-in conversation patterns...');
@@ -154,6 +305,8 @@ export async function seedDefaults(dbInstance: PostgresJsDatabase<any>) {
   }
 
   console.log('Built-in patterns seeded.');
+
+  await seedBuiltInAvatars(dbInstance);
 }
 
 // Allow running this script directly
