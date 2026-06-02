@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { api, type Document, type DnaTopic, type DnaSubtopic, type DnaValue, type Microlearning } from "@/lib/api";
 
 // ─── Document helpers ────────────────────────────────────────────────────────
@@ -77,11 +78,32 @@ function suggestedBadge(status: DnaTopic["status"] | DnaSubtopic["status"]) {
 
 function synthesisBadge(status: DnaSubtopic["synthesisStatus"]) {
   if (status === "running")
-    return <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100 border-0">Running</Badge>;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100 border-0 cursor-default">Synthesizing</Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top">Synthesizing value statements from your documents…</TooltipContent>
+      </Tooltip>
+    );
   if (status === "done")
-    return <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100 border-0">Done</Badge>;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge className="text-xs bg-green-100 text-green-700 hover:bg-green-100 border-0 cursor-default">Synthesized</Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top">Value statements have been synthesized from your documents for this subtopic.</TooltipContent>
+      </Tooltip>
+    );
   if (status === "failed")
-    return <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-100 border-0">Not Found</Badge>;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge className="text-xs bg-red-100 text-red-700 hover:bg-red-100 border-0 cursor-default">Not Found</Badge>
+        </TooltipTrigger>
+        <TooltipContent side="top">No relevant content was found in your documents for this subtopic.</TooltipContent>
+      </Tooltip>
+    );
   return null;
 }
 
@@ -231,7 +253,36 @@ function ValueRow({ value }: { value: DnaValue }) {
 
 // ─── Subtopic row ────────────────────────────────────────────────────────────
 
-function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; onSuggestionAction?: () => void }) {
+function CoveragePill({ microlearnings }: { microlearnings: Microlearning[] }) {
+  const covered = microlearnings.length > 0;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          className={`text-xs border-0 cursor-default ${covered ? "bg-green-100 text-green-700 hover:bg-green-100" : "bg-muted text-muted-foreground hover:bg-muted"}`}
+        >
+          {covered ? "Covered" : "Not covered"}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-60">
+        {covered ? (
+          <div className="space-y-0.5">
+            <p className="font-medium">Taught by {microlearnings.length} Microlearning{microlearnings.length !== 1 ? "s" : ""}:</p>
+            <ul className="list-disc pl-4">
+              {microlearnings.map((ml) => (
+                <li key={ml.id}>{ml.title}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          "Not yet taught by any Microlearning."
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SubtopicRow({ subtopic, coveringMicrolearnings, onSuggestionAction }: { subtopic: DnaSubtopic; coveringMicrolearnings: Microlearning[]; onSuggestionAction?: () => void }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(subtopic.name);
@@ -300,6 +351,7 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium truncate">{subtopic.name}</p>
             {suggestedBadge(subtopic.status)}
+            {subtopic.status === "active" && <CoveragePill microlearnings={coveringMicrolearnings} />}
             {subtopic.status === "active" && synthesisBadge(subtopic.synthesisStatus)}
           </div>
           {subtopic.description && !editing && (
@@ -510,28 +562,29 @@ function CoverageBadge({ topic, coveredSubtopicIds }: { topic: DnaTopic; covered
   if (total === 0) return null;
   const covered = activeSubtopics.filter((s) => coveredSubtopicIds.has(s.id)).length;
   const label = `${covered}/${total}`;
-  if (covered === total) {
-    return (
-      <Badge className="text-[10px] px-1.5 py-0 h-4 bg-green-100 text-green-700 border-green-200 hover:bg-green-100 shrink-0 gap-1">
-        <BookOpen className="size-2.5" />{label}
-      </Badge>
-    );
-  }
-  if (covered === 0) {
-    return (
-      <Badge className="text-[10px] px-1.5 py-0 h-4 bg-red-100 text-red-700 border-red-200 hover:bg-red-100 shrink-0 gap-1">
-        <BookOpen className="size-2.5" />{label}
-      </Badge>
-    );
-  }
+  const color =
+    covered === total
+      ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-100"
+      : covered === 0
+      ? "bg-red-100 text-red-700 border-red-200 hover:bg-red-100"
+      : "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100";
   return (
-    <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 shrink-0 gap-1">
-      <BookOpen className="size-2.5" />{label}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span onClick={(e) => e.stopPropagation()}>
+          <Badge className={`text-[10px] px-1.5 py-0 h-4 shrink-0 gap-1 cursor-default ${color}`}>
+            <BookOpen className="size-2.5" />{label}
+          </Badge>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {covered} of {total} subtopic{total !== 1 ? "s" : ""} {covered === 1 ? "is" : "are"} taught by at least one Microlearning.
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
-function TopicItem({ topic, coveredSubtopicIds, onSuggestionAction }: { topic: DnaTopic; coveredSubtopicIds: Set<string>; onSuggestionAction?: () => void }) {
+function TopicItem({ topic, coveredSubtopicIds, subtopicCoverage, onSuggestionAction }: { topic: DnaTopic; coveredSubtopicIds: Set<string>; subtopicCoverage: Map<string, Microlearning[]>; onSuggestionAction?: () => void }) {
   const queryClient = useQueryClient();
   const [showAddSubtopic, setShowAddSubtopic] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -659,7 +712,7 @@ function TopicItem({ topic, coveredSubtopicIds, onSuggestionAction }: { topic: D
             {[...topic.subtopics]
               .filter((s) => s.status !== "rejected")
               .sort((a, b) => a.name.localeCompare(b.name))
-              .map((s) => <SubtopicRow key={s.id} subtopic={s} onSuggestionAction={onSuggestionAction} />)}
+              .map((s) => <SubtopicRow key={s.id} subtopic={s} coveringMicrolearnings={subtopicCoverage.get(s.id) ?? []} onSuggestionAction={onSuggestionAction} />)}
           </div>
 
           {/* Add subtopic */}
@@ -838,9 +891,16 @@ export function DNASection() {
     queryFn: () => api.microlearnings.list(),
   });
 
-  const coveredSubtopicIds = new Set<string>(
-    (mlData?.microlearnings ?? []).flatMap((ml: Microlearning) => ml.subtopicIds ?? [])
-  );
+  // Map each subtopic id to the Microlearnings that teach it.
+  const subtopicCoverage = new Map<string, Microlearning[]>();
+  for (const ml of mlData?.microlearnings ?? []) {
+    for (const sid of ml.subtopicIds ?? []) {
+      const list = subtopicCoverage.get(sid);
+      if (list) list.push(ml);
+      else subtopicCoverage.set(sid, [ml]);
+    }
+  }
+  const coveredSubtopicIds = new Set<string>(subtopicCoverage.keys());
 
   const addTopicMutation = useMutation({
     mutationFn: ({ name, description }: { name: string; description: string }) =>
@@ -877,6 +937,7 @@ export function DNASection() {
     });
 
   return (
+    <TooltipProvider delayDuration={150}>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -963,7 +1024,7 @@ export function DNASection() {
         ) : (
           <Accordion type="multiple" className="space-y-1">
             {[...visibleTopics].sort((a, b) => a.name.localeCompare(b.name)).map((topic) => (
-              <TopicItem key={topic.id} topic={topic} coveredSubtopicIds={coveredSubtopicIds} onSuggestionAction={() => setDiscoverResult(null)} />
+              <TopicItem key={topic.id} topic={topic} coveredSubtopicIds={coveredSubtopicIds} subtopicCoverage={subtopicCoverage} onSuggestionAction={() => setDiscoverResult(null)} />
             ))}
           </Accordion>
         )}
@@ -983,5 +1044,6 @@ export function DNASection() {
         </AccordionItem>
       </Accordion>
     </div>
+    </TooltipProvider>
   );
 }
