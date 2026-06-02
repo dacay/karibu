@@ -474,6 +474,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ content }),
       }),
+    approveAllValues: (subtopicId: string) =>
+      request<{ success: boolean; approvedCount: number }>(`/dna/subtopics/${subtopicId}/approve-all`, {
+        method: "POST",
+      }),
     updateValueApproval: (id: string, approval: "approved" | "rejected") =>
       request<{ value: DnaValue }>(`/dna/values/${id}/approval`, {
         method: "PATCH",

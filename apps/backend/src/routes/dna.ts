@@ -629,6 +629,37 @@ dnaRouter.patch('/values/:id/approval', requireRole('admin'), async (c) => {
 });
 
 /**
+ * POST /dna/subtopics/:id/approve-all
+ * Approve all pending values under a subtopic.
+ */
+dnaRouter.post('/subtopics/:id/approve-all', requireRole('admin'), async (c) => {
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+
+  const [subtopic] = await db
+    .select()
+    .from(dnaSubtopics)
+    .where(and(eq(dnaSubtopics.id, id), eq(dnaSubtopics.organizationId, auth.organizationId)))
+    .limit(1);
+
+  if (!subtopic) {
+    return c.json({ error: 'Subtopic not found.' }, 404);
+  }
+
+  const updated = await db
+    .update(dnaValues)
+    .set({ approval: 'approved' })
+    .where(and(
+      eq(dnaValues.subtopicId, id),
+      eq(dnaValues.organizationId, auth.organizationId),
+      eq(dnaValues.approval, 'pending'),
+    ))
+    .returning();
+
+  return c.json({ success: true, approvedCount: updated.length });
+});
+
+/**
  * DELETE /dna/values/:id
  * Delete a DNA value.
  */

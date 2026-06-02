@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Plus,
   Check,
+  CheckCheck,
   X,
   Wand2,
   Pencil,
@@ -267,6 +268,11 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
     },
   });
 
+  const approveAllMutation = useMutation({
+    mutationFn: () => api.dna.approveAllValues(subtopic.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dna"] }),
+  });
+
   const updateMutation = useMutation({
     mutationFn: () => api.dna.updateSubtopic(subtopic.id, { name: editName, description: editDescription }),
     onSuccess: () => {
@@ -461,15 +467,31 @@ function SubtopicRow({ subtopic, onSuggestionAction }: { subtopic: DnaSubtopic; 
                     </div>
                   </div>
                 ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground"
-                    onClick={() => setShowAddValue(true)}
-                  >
-                    <Plus className="size-3 mr-1" />
-                    Add value
-                  </Button>
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={() => setShowAddValue(true)}
+                    >
+                      <Plus className="size-3 mr-1" />
+                      Add value
+                    </Button>
+                    {subtopic.values.some((v) => v.approval === "pending") && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-green-700 hover:text-green-700 hover:bg-green-50"
+                        disabled={approveAllMutation.isPending}
+                        onClick={() => approveAllMutation.mutate()}
+                      >
+                        {approveAllMutation.isPending
+                          ? <Spinner className="size-3 mr-1" />
+                          : <CheckCheck className="size-3 mr-1" />}
+                        Approve all
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </AccordionContent>
