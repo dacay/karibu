@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Flag, BadgeCheck, FileText, Globe } from "lucide-react";
+import { Flag, BadgeCheck, FileText, Globe, BookOpen } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
@@ -21,12 +21,13 @@ interface ChatMessageProps {
   onOptionClick?: (text: string) => void;
 }
 
-type DataSource = "source" | "document" | "general" | "conversational";
+type DataSource = "source" | "document" | "manual" | "general" | "conversational";
 
 // "conversational" intentionally omitted — non-informational replies show no badge.
 const DATA_SOURCE_CONFIG: Partial<Record<DataSource, { icon: React.ElementType; label: (orgName?: string) => string }>> = {
   source: { icon: BadgeCheck, label: (orgName) => `${orgName ? `${orgName} ` : ""}Verified` },
   document: { icon: FileText, label: (orgName) => `${orgName ? `${orgName} ` : ""}Documents` },
+  manual: { icon: BookOpen, label: () => "Karibu Knowledge Base" },
   general: { icon: Globe, label: () => "General Knowledge" },
 };
 

@@ -5,6 +5,7 @@ import { embedText, embedTexts } from './embeddings.js';
 
 let chromaClient: CloudClient | null = null;
 let documentCollection: Collection | null = null;
+let manualCollection: Collection | null = null;
 
 const getChromaClient = (): CloudClient => {
 
@@ -42,6 +43,32 @@ export const getDocumentCollection = async (): Promise<Collection> => {
   logger.info({ collection: env.CHROMA_COLLECTION_NAME }, 'ChromaDB collection ready.');
 
   return documentCollection;
+}
+
+/**
+ * Get or create the central Karibu manual collection in ChromaDB.
+ * This collection is organization-agnostic: it holds product documentation
+ * about how to use Karibu and is shared across all organizations.
+ */
+export const getManualCollection = async (): Promise<Collection> => {
+
+  if (manualCollection) return manualCollection;
+
+  const client = getChromaClient();
+
+  const embeddingFunction: EmbeddingFunction = {
+    generate: (texts: string[]) => embedTexts(texts),
+  };
+
+  manualCollection = await client.getOrCreateCollection({
+    name: env.CHROMA_MANUAL_COLLECTION_NAME,
+    embeddingFunction,
+    metadata: { description: 'Karibu product manual — how to use Karibu (shared across all organizations)' },
+  });
+
+  logger.info({ collection: env.CHROMA_MANUAL_COLLECTION_NAME }, 'ChromaDB manual collection ready.');
+
+  return manualCollection;
 }
 
 export interface AddDocumentChunksParams {
@@ -126,6 +153,32 @@ export const queryDocuments = async (
     queryEmbeddings: [queryEmbedding],
     nResults,
     where: { organizationId },
+  });
+
+  return {
+    ids: results.ids[0] ?? [],
+    documents: results.documents[0] ?? [],
+    distances: results.distances?.[0] ?? null,
+    metadatas: (results.metadatas[0] ?? []) as (Record<string, string> | null)[],
+  };
+}
+
+/**
+ * Query the central Karibu manual collection for chunks relevant to a query string.
+ * Unlike queryDocuments, this is NOT scoped to an organization — the manual is shared.
+ */
+export const queryManual = async (
+  queryText: string,
+  nResults = 5
+): Promise<QueryResult> => {
+
+  const collection = await getManualCollection();
+
+  const queryEmbedding = await embedText(queryText);
+
+  const results = await collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults,
   });
 
   return {

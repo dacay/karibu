@@ -81,6 +81,9 @@ const envSchema = z.object({
   CHROMA_TENANT: z.string().min(1),
   CHROMA_DATABASE: z.string().min(1),
   CHROMA_COLLECTION_NAME: z.string().min(1).default('karibu-documents'),
+  // Central, organization-agnostic collection holding the Karibu product manual
+  // (how to use Karibu). Shared across all orgs — queried without an org filter.
+  CHROMA_MANUAL_COLLECTION_NAME: z.string().min(1).default('karibu-manual'),
 
   // Postmark (transactional email)
   POSTMARK_API_KEY: z.string().min(1).optional(),
