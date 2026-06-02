@@ -24,10 +24,11 @@ import {
   Pencil,
   UsersRound,
   Search,
-  Phone,
 } from "lucide-react";
+import { isValidPhoneNumber } from "react-phone-number-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
@@ -323,7 +324,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
         email: email.trim().toLowerCase(),
         firstName: firstName.trim() || null,
         lastName: lastName.trim() || null,
-        phoneNumber: phoneNumber.trim() || null,
+        phoneNumber: phoneNumber || null,
         sendEmail,
       }),
     onSuccess: (data) => {
@@ -335,7 +336,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (isValidEmail(email)) {
+    if (isValidEmail(email) && phoneValid) {
       inviteMutation.mutate();
     }
   };
@@ -349,6 +350,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
   };
 
   const emailValid = isValidEmail(email);
+  const phoneValid = !phoneNumber || isValidPhoneNumber(phoneNumber);
 
   return (
     <Card className="border-dashed">
@@ -395,12 +397,15 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm text-muted-foreground">Phone number</label>
-              <Input
-                type="tel"
-                placeholder="+14155552671"
+              <PhoneInput
+                defaultCountry="US"
+                placeholder="(415) 555-2671"
                 value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                onChange={(value) => setPhoneNumber(value ?? "")}
               />
+              {phoneNumber && !phoneValid && (
+                <p className="text-xs text-destructive">Enter a valid phone number.</p>
+              )}
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <Checkbox
@@ -413,7 +418,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
               <p className="text-sm text-destructive">{(inviteMutation.error as Error).message}</p>
             )}
             <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={inviteMutation.isPending || !emailValid}>
+              <Button type="submit" size="sm" disabled={inviteMutation.isPending || !emailValid || !phoneValid}>
                 {inviteMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
                 {sendEmail ? "Send invitation" : "Add member"}
               </Button>
@@ -580,15 +585,15 @@ function MemberRow({ member, isLast, isPending, canEditName, onAction, copiedUse
             {displayName && (
               <div className="font-medium truncate">{displayName}</div>
             )}
-            <div className={["truncate", displayName ? "text-xs text-muted-foreground" : ""].join(" ")}>
-              {member.email}
+            <div className={["flex items-center gap-1.5 truncate", displayName ? "text-xs text-muted-foreground" : ""].join(" ")}>
+              <span className="truncate">{member.email}</span>
+              {member.phoneNumber && (
+                <>
+                  <span className="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
+                  <span className="shrink-0">{member.phoneNumber}</span>
+                </>
+              )}
             </div>
-            {member.phoneNumber && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
-                <Phone className="size-3 shrink-0" />
-                {member.phoneNumber}
-              </div>
-            )}
           </div>
           {isPending && <Spinner className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
@@ -724,6 +729,7 @@ function MembersTab() {
   };
 
   const allMembers = data?.users ?? [];
+  const editPhoneValid = !editPhoneNumber || isValidPhoneNumber(editPhoneNumber);
   const query = search.toLowerCase().trim();
 
   // Filter by search (email or name)
@@ -804,12 +810,12 @@ function MembersTab() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (editingMember) {
+              if (editingMember && editPhoneValid) {
                 updateMemberMutation.mutate({
                   userId: editingMember.id,
                   firstName: editFirstName.trim() || null,
                   lastName: editLastName.trim() || null,
-                  phoneNumber: editPhoneNumber.trim() || null,
+                  phoneNumber: editPhoneNumber || null,
                 });
               }
             }}
@@ -836,18 +842,21 @@ function MembersTab() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm text-muted-foreground">Phone number</label>
-              <Input
-                type="tel"
-                placeholder="+14155552671"
+              <PhoneInput
+                defaultCountry="US"
+                placeholder="(415) 555-2671"
                 value={editPhoneNumber}
-                onChange={(e) => setEditPhoneNumber(e.target.value)}
+                onChange={(value) => setEditPhoneNumber(value ?? "")}
               />
+              {editPhoneNumber && !editPhoneValid && (
+                <p className="text-xs text-destructive">Enter a valid phone number.</p>
+              )}
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMember(null)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={updateMemberMutation.isPending}>
+              <Button type="submit" size="sm" disabled={updateMemberMutation.isPending || !editPhoneValid}>
                 {updateMemberMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
                 Save
               </Button>

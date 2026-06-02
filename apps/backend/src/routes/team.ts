@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
+import { zValidator } from '../utils/validator.js';
 import { eq, and, desc } from 'drizzle-orm';
 import type { UserAuthContext } from '../types/auth.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
