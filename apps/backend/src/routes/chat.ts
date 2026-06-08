@@ -33,6 +33,9 @@ import {
   chats,
   organizations,
   users,
+  LANGUAGE_CODES,
+  type LanguageCode,
+  type AvatarLocalization,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -43,6 +46,63 @@ const chat = new Hono();
 
 // All chat routes require authentication
 chat.use('*', authMiddleware());
+
+// ─── Language ───────────────────────────────────────────────────────────────
+
+const LANGUAGE_NAMES: Record<LanguageCode, string> = {
+  en: 'English',
+  es: 'Spanish',
+};
+
+/** Normalize an arbitrary stored value to a supported language, defaulting to English. */
+function resolveLanguage(value: string | null | undefined): LanguageCode {
+  return (LANGUAGE_CODES as readonly string[]).includes(value ?? '')
+    ? (value as LanguageCode)
+    : 'en';
+}
+
+/**
+ * Pick an avatar's localization for a language, falling back to English (the
+ * always-present default) so a session always has a voice and persona.
+ */
+function resolveLocalization(
+  localizations: Record<string, AvatarLocalization> | null | undefined,
+  language: LanguageCode,
+): AvatarLocalization | null {
+  if (!localizations) return null;
+  return localizations[language] ?? localizations.en ?? null;
+}
+
+/** Explicit, always-on instruction telling the model which language to speak. */
+function languageDirective(language: LanguageCode): string {
+  const name = LANGUAGE_NAMES[language];
+  return `\n---\nLANGUAGE: Respond entirely in ${name}. Every message you write, including your opening message, must be in natural, fluent ${name}. Do not switch languages unless the learner explicitly asks you to.`;
+}
+
+/**
+ * Tool that lets the learner change their language mid-conversation by asking.
+ * The enum input guarantees only supported languages can ever be set. On change,
+ * `onChange` is invoked so the route can signal the new language to the client.
+ */
+function makeSetLanguageTool(userId: string, onChange: (language: LanguageCode) => void) {
+  return {
+    description:
+      'Change the learner\'s language preference when they ask to switch languages. Only call this for a supported language. After calling it, continue this and all following messages in the new language.',
+    inputSchema: z.object({
+      language: z.enum(LANGUAGE_CODES).describe('The language to switch to.'),
+    }),
+    execute: async ({ language }: { language: LanguageCode }) => {
+      try {
+        await db.update(users).set({ language }).where(eq(users.id, userId));
+        onChange(language);
+        return `Language preference updated to ${LANGUAGE_NAMES[language]}. Continue in ${LANGUAGE_NAMES[language]} from now on.`;
+      } catch (err) {
+        logger.error({ err, userId, language }, 'Failed to update learner language preference.');
+        return 'Unable to change the language right now.';
+      }
+    },
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -83,14 +143,15 @@ function buildMLSystemPrompt(
   organizationName: string,
   learnerName: string | null,
   responseLength: string | null,
-  persona: { name: string; personality: string } | null,
+  persona: { name: string; description: string } | null,
+  language: LanguageCode,
 ): string {
 
   const parts: string[] = [patternPrompt];
 
   if (persona) {
     parts.push(
-      `\nYOUR PERSONA: You are ${persona.name}. The text below — written in your own voice — is the character and speaking style to embody for the whole session. Let it shape your tone, warmth, and word choice, layered on top of the teaching approach above. It must never override the instructional method, the learning objectives, or the organizational source of truth.\n${persona.personality}`,
+      `\nYOUR PERSONA: You are ${persona.name}. The text below — written in your own voice — is the character and speaking style to embody for the whole session. Let it shape your tone, warmth, and word choice, layered on top of the teaching approach above. It must never override the instructional method, the learning objectives, or the organizational source of truth.\n${persona.description}`,
     );
   }
 
@@ -143,9 +204,12 @@ function buildMLSystemPrompt(
       '- Use the organizational knowledge above as your primary source of truth.',
       '- Use the searchKnowledge tool when you need additional context from organizational documents.',
       '- If the learner asks about unrelated topics, acknowledge briefly and redirect back to the session.',
+      '- If the learner asks to switch to a language we support, call setLanguage with that language and then continue the session in it. If they ask for a language we do not support, tell them it is not available and keep going in the current language.',
       '- Once ALL objectives have been covered and the learner demonstrates understanding, deliver your closing remarks AND call markLearningComplete in that same response. Never say a closing message and then wait for the learner to reply before calling the tool.',
     );
   }
+
+  parts.push(languageDirective(language));
 
   parts.push(HIPAA_GUARDRAIL);
 
@@ -302,7 +366,7 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       .where(eq(organizations.id, auth.organizationId))
       .limit(1),
     db
-      .select({ firstName: users.firstName, lastName: users.lastName, preferredAvatarId: users.preferredAvatarId })
+      .select({ firstName: users.firstName, lastName: users.lastName, preferredAvatarId: users.preferredAvatarId, language: users.language })
       .from(users)
       .where(eq(users.id, auth.userId))
       .limit(1),
@@ -310,16 +374,21 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   const organizationName = org?.name ?? 'your organization';
   const learnerName = formatLearnerName(learner?.firstName, learner?.lastName);
 
+  // The language the session is conducted in. Mutable so the setLanguage tool
+  // can flip it within the same request and the metadata reflects the change.
+  let language = resolveLanguage(learner?.language);
+
   // Resolve the avatar whose persona drives the session. This mirrors the
   // frontend's voice precedence so the persona matches the voice the learner
   // hears: learners use their preferred avatar when set, otherwise the ML's
-  // own avatar; admins always use the ML's avatar.
-  let persona: { name: string; personality: string } | null = null;
+  // own avatar; admins always use the ML's avatar. The persona text is the
+  // avatar's localization for the active language (falling back to English).
+  let persona: { name: string; description: string } | null = null;
   const preferredAvatarId = auth.role !== 'admin' ? learner?.preferredAvatarId ?? null : null;
   const avatarCandidateIds = [preferredAvatarId, ml.avatarId].filter((id): id is string => Boolean(id));
   if (avatarCandidateIds.length > 0) {
     const avatarRows = await db
-      .select({ id: avatars.id, name: avatars.name, personality: avatars.personality })
+      .select({ id: avatars.id, name: avatars.name, localizations: avatars.localizations })
       .from(avatars)
       .where(and(
         inArray(avatars.id, avatarCandidateIds),
@@ -329,7 +398,10 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
       avatarRows.find((a) => a.id === preferredAvatarId) ??
       avatarRows.find((a) => a.id === ml.avatarId);
     if (chosen) {
-      persona = { name: chosen.name, personality: chosen.personality };
+      const localization = resolveLocalization(chosen.localizations, language);
+      if (localization) {
+        persona = { name: chosen.name, description: localization.description };
+      }
     }
   }
 
@@ -434,10 +506,17 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     learnerName,
     responseLength,
     persona,
+    language,
   );
 
   // Track whether the ML was completed during this request
   let justCompleted = false;
+  // Track an in-request language change so we can signal the client.
+  let languageChanged: LanguageCode | null = null;
+  const setLanguageTool = makeSetLanguageTool(auth.userId, (next) => {
+    language = next;
+    languageChanged = next;
+  });
 
   const searchKnowledgeTool = {
     description: 'Search the organizational knowledge base for additional context relevant to the learner\'s questions.',
@@ -472,10 +551,12 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   const tools: ToolSet = isCompleted
     ? {
         searchKnowledge: searchKnowledgeTool,
+        setLanguage: setLanguageTool,
         ...(multipleChoiceEnabled ? { offerOptions: offerOptionsTool } : {}),
       }
     : {
         searchKnowledge: searchKnowledgeTool,
+        setLanguage: setLanguageTool,
         ...(multipleChoiceEnabled ? { offerOptions: offerOptionsTool } : {}),
         markLearningComplete: {
           description: 'Call this tool when ALL learning objectives have been covered and the learner demonstrates sufficient understanding. This marks the microlearning as completed.',
@@ -531,8 +612,11 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
     messageMetadata: ({ part }) => {
-      if (part.type === 'finish' && justCompleted) {
-        return { mlCompleted: true };
+      if (part.type === 'finish' && (justCompleted || languageChanged)) {
+        return {
+          ...(justCompleted ? { mlCompleted: true } : {}),
+          ...(languageChanged ? { languageChanged } : {}),
+        };
       }
     },
     onFinish: ({ messages: updatedMessages }) => {
@@ -632,13 +716,21 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
       .where(eq(organizations.id, auth.organizationId))
       .limit(1),
     db
-      .select({ firstName: users.firstName, lastName: users.lastName })
+      .select({ firstName: users.firstName, lastName: users.lastName, language: users.language })
       .from(users)
       .where(eq(users.id, auth.userId))
       .limit(1),
   ]);
   const assistantOrgName = assistantOrg?.name ?? 'your organization';
   const assistantLearnerName = formatLearnerName(assistantLearner?.firstName, assistantLearner?.lastName);
+
+  // Language the assistant replies in. Mutable so the setLanguage tool can flip it.
+  let assistantLanguage = resolveLanguage(assistantLearner?.language);
+  let assistantLanguageChanged: LanguageCode | null = null;
+  const assistantSetLanguageTool = makeSetLanguageTool(auth.userId, (next) => {
+    assistantLanguage = next;
+    assistantLanguageChanged = next;
+  });
 
   const learnerLine = assistantLearnerName
     ? `\n\nLEARNER: ${assistantLearnerName}\nAddress the learner by their first name when it feels natural.`
@@ -665,6 +757,9 @@ You MUST call reportSource before writing your response, describing what your re
 - "manual" if your response will convey information from the [Karibu Manual]
 - "general" if your response will convey information from your own general knowledge (search results were irrelevant or you didn't search)
 - "conversational" if your response does not convey factual information from a knowledge source — e.g. greetings, thanks, small talk, acknowledgments, clarifying questions back to the user, or describing your own capabilities and how you can help
+
+If the learner asks to switch to a language you support, call setLanguage with that language and then continue in it. If they ask for a language you don't support, tell them it isn't available and keep going in the current language.
+${languageDirective(assistantLanguage)}
 ${HIPAA_GUARDRAIL}`;
 
   // Track the best knowledge source used during this response:
@@ -680,6 +775,7 @@ ${HIPAA_GUARDRAIL}`;
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(3),
     tools: {
+      setLanguage: assistantSetLanguageTool,
       searchKnowledge: {
         description: 'Search the organizational knowledge base for information relevant to the user\'s question. Always call this before answering.',
         inputSchema: z.object({
@@ -770,8 +866,15 @@ ${HIPAA_GUARDRAIL}`;
     originalMessages: messages,
     generateMessageId: createIdGenerator({ prefix: 'msg', size: 16 }),
     messageMetadata: ({ part }) => {
-      if (part.type === 'finish' && (dataSource ?? (searchWasCalled ? 'general' : null))) {
-        return { dataSource: dataSource ?? 'general' };
+      if (part.type === 'finish') {
+        const meta: Record<string, unknown> = {};
+        if (dataSource ?? (searchWasCalled ? 'general' : null)) {
+          meta.dataSource = dataSource ?? 'general';
+        }
+        if (assistantLanguageChanged) {
+          meta.languageChanged = assistantLanguageChanged;
+        }
+        if (Object.keys(meta).length > 0) return meta;
       }
     },
     onFinish: ({ messages: updatedMessages }) => {

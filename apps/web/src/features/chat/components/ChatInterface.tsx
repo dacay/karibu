@@ -62,6 +62,7 @@ export function ChatInterface({
   autoPlayVoice = false,
   className,
   onComplete,
+  onLanguageChange,
   onRestart,
 }: ChatConfig) {
 
@@ -118,6 +119,19 @@ export function ChatInterface({
       onComplete?.();
     }
   }, [messages, isCompleted, onComplete]);
+
+  // Watch messages for a language change the AI applied via the setLanguage tool.
+  // Fires once per new assistant message id so a switch propagates to the rest
+  // of the app (profile, voice, avatar filtering).
+  const lastLanguageMsgIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const last = messages[messages.length - 1] as UIMessage | undefined;
+    const changed = (last?.metadata as { languageChanged?: string } | undefined)?.languageChanged;
+    if (last?.role === "assistant" && changed && lastLanguageMsgIdRef.current !== last.id) {
+      lastLanguageMsgIdRef.current = last.id;
+      onLanguageChange?.(changed);
+    }
+  }, [messages, onLanguageChange]);
 
   const isLoading = status === "submitted" || status === "streaming";
 

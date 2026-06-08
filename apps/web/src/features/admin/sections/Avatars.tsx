@@ -12,7 +12,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Separator } from "@/components/ui/separator";
-import { api, type Avatar, DEEPGRAM_VOICES } from "@/lib/api";
+import {
+  api,
+  type Avatar,
+  type AvatarLocalization,
+  type LanguageCode,
+  DEEPGRAM_VOICES,
+  LANGUAGES,
+  getVoice,
+  localizationFor,
+} from "@/lib/api";
 import { useTTS } from "@/features/chat/hooks/useTTS";
 import { getVersionedAssetUrl } from "@/lib/assets";
 
@@ -26,11 +35,13 @@ function getAvatarImageUrl(avatar: Avatar): string | null {
 interface VoiceSelectorProps {
   value: string;
   onChange: (id: string) => void;
+  language: LanguageCode;
 }
 
-function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
-  const female = DEEPGRAM_VOICES.filter((v) => v.gender === "female");
-  const male = DEEPGRAM_VOICES.filter((v) => v.gender === "male");
+function VoiceSelector({ value, onChange, language }: VoiceSelectorProps) {
+  const voices = DEEPGRAM_VOICES.filter((v) => v.language === language);
+  const female = voices.filter((v) => v.gender === "female");
+  const male = voices.filter((v) => v.gender === "male");
   const { state, speak, stop } = useTTS();
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const previewingRef = useRef<string | null>(null);
@@ -82,7 +93,7 @@ function VoiceSelector({ value, onChange }: VoiceSelectorProps) {
             >
               <div className="flex flex-col items-start">
                 <span className="font-medium">{v.name}</span>
-                <span className="text-xs text-muted-foreground">{v.description}</span>
+                <span className="text-xs text-muted-foreground">{v.accent} · {v.description}</span>
               </div>
               <Button
                 type="button"
@@ -183,10 +194,15 @@ function ImagePicker({ previewUrl, onFileChange }: ImagePickerProps) {
 
 interface AvatarFormValues {
   name: string;
-  personality: string;
-  voiceId: string;
+  // Per-language voice + description. English and Spanish are both required.
+  localizations: Record<string, AvatarLocalization>;
   imageFile: File | null;
   existingImageUrl: string | null;
+}
+
+// Default voice for a language: first catalog voice in that language.
+function defaultVoiceId(language: LanguageCode): string {
+  return DEEPGRAM_VOICES.find((v) => v.language === language)?.id ?? "";
 }
 
 interface AvatarFormProps {
@@ -205,8 +221,17 @@ function AvatarForm({
   submitLabel = "Save",
 }: AvatarFormProps) {
   const [name, setName] = useState(initial.name ?? "");
-  const [personality, setPersonality] = useState(initial.personality ?? "");
-  const [voiceId, setVoiceId] = useState(initial.voiceId ?? DEEPGRAM_VOICES[0].id);
+  const [localizations, setLocalizations] = useState<Record<string, AvatarLocalization>>(() => {
+    const seed = initial.localizations ?? {};
+    const out: Record<string, AvatarLocalization> = {};
+    for (const { code } of LANGUAGES) {
+      out[code] = {
+        voiceId: seed[code]?.voiceId ?? defaultVoiceId(code),
+        description: seed[code]?.description ?? "",
+      };
+    }
+    return out;
+  });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [existingImageUrl] = useState<string | null>(initial.existingImageUrl ?? null);
   const [imageRemoved, setImageRemoved] = useState(false);
@@ -222,7 +247,20 @@ function AvatarForm({
     if (!file) setImageRemoved(true);
   }
 
-  const valid = name.trim().length > 0 && personality.trim().length > 0 && voiceId.length > 0;
+  function setDescription(code: LanguageCode, description: string) {
+    setLocalizations((prev) => ({ ...prev, [code]: { ...prev[code], description } }));
+  }
+  function setVoiceId(code: LanguageCode, voiceId: string) {
+    setLocalizations((prev) => ({ ...prev, [code]: { ...prev[code], voiceId } }));
+  }
+
+  const valid =
+    name.trim().length > 0 &&
+    LANGUAGES.every(
+      ({ code }) =>
+        (localizations[code]?.description.trim().length ?? 0) > 0 &&
+        (localizations[code]?.voiceId.length ?? 0) > 0,
+    );
 
   return (
     <div className="flex flex-col gap-4 p-4 border rounded-lg bg-muted/30">
@@ -240,32 +278,43 @@ function AvatarForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="avatar-personality">Personality</Label>
-        <Textarea
-          id="avatar-personality"
-          placeholder="Describe how this avatar behaves, its tone, communication style, and role in the learning experience."
-          value={personality}
-          onChange={(e) => setPersonality(e.target.value)}
-          rows={5}
-          className="resize-none text-sm"
-        />
-      </div>
-
-      <div className="space-y-1.5">
         <Label>Image</Label>
         <ImagePicker previewUrl={previewUrl} onFileChange={handleImageChange} />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Voice</Label>
-        <VoiceSelector value={voiceId} onChange={setVoiceId} />
-      </div>
+      {/* Per-language persona + voice. Both English and Spanish are required. */}
+      {LANGUAGES.map(({ code, label }) => (
+        <div key={code} className="space-y-3 rounded-lg border p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {label}
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor={`avatar-description-${code}`}>Description</Label>
+            <Textarea
+              id={`avatar-description-${code}`}
+              placeholder={`Describe this avatar's tone and style, written in the first person and in ${label}.`}
+              value={localizations[code]?.description ?? ""}
+              onChange={(e) => setDescription(code, e.target.value)}
+              rows={4}
+              className="resize-none text-sm"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Voice</Label>
+            <VoiceSelector
+              language={code}
+              value={localizations[code]?.voiceId ?? ""}
+              onChange={(id) => setVoiceId(code, id)}
+            />
+          </div>
+        </div>
+      ))}
 
       <div className="flex gap-2">
         <Button
           size="sm"
           disabled={!valid || isLoading}
-          onClick={() => onSave({ name, personality, voiceId, imageFile, existingImageUrl: imageRemoved ? null : existingImageUrl })}
+          onClick={() => onSave({ name, localizations, imageFile, existingImageUrl: imageRemoved ? null : existingImageUrl })}
         >
           {isLoading ? <Spinner className="size-3 mr-1" /> : null}
           {submitLabel}
@@ -288,15 +337,14 @@ function AvatarCard({ avatar }: AvatarCardProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
 
-  const voice = DEEPGRAM_VOICES.find((v) => v.id === avatar.voiceId);
+  const voice = getVoice(localizationFor(avatar, "en")?.voiceId);
   const imageUrl = getAvatarImageUrl(avatar);
 
   const updateMutation = useMutation({
     mutationFn: (values: AvatarFormValues) => {
       const formData = new FormData();
       formData.append("name", values.name);
-      formData.append("personality", values.personality);
-      formData.append("voiceId", values.voiceId);
+      formData.append("localizations", JSON.stringify(values.localizations));
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.update(avatar.id, formData);
     },
@@ -316,8 +364,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
       <AvatarForm
         initial={{
           name: avatar.name,
-          personality: avatar.personality,
-          voiceId: avatar.voiceId,
+          localizations: avatar.localizations,
           existingImageUrl: imageUrl,
         }}
         onSave={(values) => updateMutation.mutate(values)}
@@ -356,7 +403,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
               </div>
               {voice && (
                 <p className="text-xs text-muted-foreground">
-                  {voice.name} · {voice.gender === "female" ? "Female" : "Male"} · {voice.description}
+                  {voice.name} · {voice.accent} · {voice.gender === "female" ? "Female" : "Male"} · {voice.description}
                 </p>
               )}
             </div>
@@ -392,7 +439,7 @@ function AvatarCard({ avatar }: AvatarCardProps) {
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed border rounded-md p-3 bg-muted/30">
-          {avatar.personality}
+          {localizationFor(avatar, "en")?.description}
         </p>
       </CardContent>
     </Card>
@@ -414,8 +461,7 @@ export function AvatarsSection() {
     mutationFn: (values: AvatarFormValues) => {
       const formData = new FormData();
       formData.append("name", values.name);
-      formData.append("personality", values.personality);
-      formData.append("voiceId", values.voiceId);
+      formData.append("localizations", JSON.stringify(values.localizations));
       if (values.imageFile) formData.append("image", values.imageFile);
       return api.avatars.create(formData);
     },

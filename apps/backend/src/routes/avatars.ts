@@ -2,13 +2,55 @@ import { Hono } from 'hono';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
-import { avatars } from '../db/schema.js';
+import { avatars, LANGUAGE_CODES, type AvatarLocalization } from '../db/schema.js';
 import { uploadToAssetsBucket, deleteFromAssetsBucket, buildAvatarImageKey } from '../services/s3.js';
 import { logger } from '../config/logger.js';
 
 const avatarsRouter = new Hono();
 
 avatarsRouter.use('*', authMiddleware());
+
+/**
+ * Parse and validate the per-language localizations payload from a multipart
+ * field. Every supported language (English and Spanish) is required, each with
+ * a non-empty voice and description.
+ */
+function parseLocalizations(
+  raw: string | null,
+): { ok: true; value: Record<string, AvatarLocalization> } | { ok: false; error: string } {
+
+  if (!raw) return { ok: false, error: 'Avatar localizations are required.' };
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, error: 'Invalid localizations payload.' };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null) {
+    return { ok: false, error: 'Invalid localizations payload.' };
+  }
+
+  const out: Record<string, AvatarLocalization> = {};
+
+  for (const lang of LANGUAGE_CODES) {
+    const entry = (parsed as Record<string, unknown>)[lang];
+    if (!entry || typeof entry !== 'object') {
+      return { ok: false, error: `Both English and Spanish are required (missing "${lang}").` };
+    }
+    const { voiceId, description } = entry as Record<string, unknown>;
+    if (typeof voiceId !== 'string' || voiceId.trim().length === 0) {
+      return { ok: false, error: `A voice is required for "${lang}".` };
+    }
+    if (typeof description !== 'string' || description.trim().length === 0) {
+      return { ok: false, error: `A description is required for "${lang}".` };
+    }
+    out[lang] = { voiceId: voiceId.trim(), description: description.trim() };
+  }
+
+  return { ok: true, value: out };
+}
 
 // Allowed image MIME types for avatar photos
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -64,8 +106,6 @@ avatarsRouter.post('/', requireRole('admin'), async (c) => {
   }
 
   const name = (formData.get('name') as string | null)?.trim();
-  const personality = (formData.get('personality') as string | null)?.trim();
-  const voiceId = (formData.get('voiceId') as string | null)?.trim();
   const imageFile = formData.get('image');
 
   if (!name) {
@@ -73,14 +113,10 @@ avatarsRouter.post('/', requireRole('admin'), async (c) => {
     return c.json({ error: 'Avatar name is required.' }, 400);
   }
 
-  if (!personality) {
+  const localizations = parseLocalizations(formData.get('localizations') as string | null);
+  if (!localizations.ok) {
 
-    return c.json({ error: 'Avatar personality is required.' }, 400);
-  }
-
-  if (!voiceId) {
-
-    return c.json({ error: 'Avatar voice is required.' }, 400);
+    return c.json({ error: localizations.error }, 400);
   }
 
   // Insert record first to get the ID for S3 key generation
@@ -89,8 +125,7 @@ avatarsRouter.post('/', requireRole('admin'), async (c) => {
     .values({
       organizationId: auth.organizationId,
       name,
-      personality,
-      voiceId,
+      localizations: localizations.value,
       isBuiltIn: false,
     })
     .returning();
@@ -179,15 +214,20 @@ avatarsRouter.patch('/:id', requireRole('admin'), async (c) => {
   }
 
   const name = (formData.get('name') as string | null)?.trim();
-  const personality = (formData.get('personality') as string | null)?.trim();
-  const voiceId = (formData.get('voiceId') as string | null)?.trim();
   const imageFile = formData.get('image');
+  const rawLocalizations = formData.get('localizations') as string | null;
 
   const updates: Partial<typeof avatar> = {};
 
   if (name) updates.name = name;
-  if (personality) updates.personality = personality;
-  if (voiceId) updates.voiceId = voiceId;
+
+  if (rawLocalizations) {
+    const localizations = parseLocalizations(rawLocalizations);
+    if (!localizations.ok) {
+      return c.json({ error: localizations.error }, 400);
+    }
+    updates.localizations = localizations.value;
+  }
 
   // Handle new image upload
   if (imageFile && imageFile instanceof File && imageFile.size > 0) {
