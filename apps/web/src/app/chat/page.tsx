@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Spinner } from "@/components/ui/spinner";
@@ -10,13 +10,14 @@ import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface, CHAT_ENDPOINTS } from "@/features/chat";
 import type { ChatAvatar } from "@/features/chat";
-import { api } from "@/lib/api";
+import { api, localizationFor } from "@/lib/api";
 import { getVersionedAssetUrl } from "@/lib/assets";
 
 export default function ChatPage() {
 
   const { user, isLoading } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const chatId = useRef(crypto.randomUUID()).current;
 
   useEffect(() => {
@@ -37,35 +38,31 @@ export default function ChatPage() {
     enabled: !!user,
   });
 
+  const language = profileData?.user.language ?? "en";
+
   const avatar = useMemo((): ChatAvatar | undefined => {
     if (!avatarsData?.avatars) return undefined;
+
+    const toChatAvatar = (found: (typeof avatarsData.avatars)[number]): ChatAvatar => ({
+      name: found.name,
+      voiceId: localizationFor(found, language)?.voiceId,
+      image: found.imageS3Key ? getVersionedAssetUrl(found.imageS3Key, found.updatedAt) : undefined,
+    });
 
     const preferredAvatarId = profileData?.user.preferredAvatarId;
     if (preferredAvatarId) {
       const found = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
-      if (found) {
-        return {
-          name: found.name,
-          voiceId: found.voiceId,
-          image: found.imageS3Key ? getVersionedAssetUrl(found.imageS3Key, found.updatedAt) : undefined,
-        };
-      }
+      if (found) return toChatAvatar(found);
     }
 
     const defaultAvatarId = profileData?.user.defaultAvatarId;
     if (defaultAvatarId) {
       const found = avatarsData.avatars.find((a) => a.id === defaultAvatarId);
-      if (found) {
-        return {
-          name: found.name,
-          voiceId: found.voiceId,
-          image: found.imageS3Key ? getVersionedAssetUrl(found.imageS3Key, found.updatedAt) : undefined,
-        };
-      }
+      if (found) return toChatAvatar(found);
     }
 
     return undefined;
-  }, [profileData, avatarsData]);
+  }, [profileData, avatarsData, language]);
 
   if (isLoading) {
     return (
@@ -100,6 +97,7 @@ export default function ChatPage() {
           chatId={chatId}
           avatar={avatar}
           autoPlayVoice={false}
+          onLanguageChange={() => queryClient.invalidateQueries({ queryKey: ["user", "me"] })}
           className="h-full"
         />
       </div>

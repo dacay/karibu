@@ -6,6 +6,17 @@ export const roleEnum = pgEnum('role', ['admin', 'user']);
 // Microlearning status enum
 export const microlearningStatusEnum = pgEnum('microlearning_status', ['draft', 'published']);
 
+// Supported content/learner languages. `en` is always the default and fallback.
+export const LANGUAGE_CODES = ['en', 'es'] as const;
+export type LanguageCode = (typeof LANGUAGE_CODES)[number];
+export const languageEnum = pgEnum('language', LANGUAGE_CODES);
+
+// Per-language voice + persona description for an avatar, stored in avatars.localizations.
+export interface AvatarLocalization {
+  voiceId: string;
+  description: string;
+}
+
 // Timestamp helpers
 const timestamps = {
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -39,6 +50,8 @@ export const users = pgTable('users', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   // User's preferred avatar — stored as plain uuid (no FK) to avoid circular reference with avatars table
   preferredAvatarId: uuid('preferred_avatar_id'),
+  // Learner's chosen language for AI responses and voice. Drives the avatar localization used.
+  language: languageEnum('language').notNull().default('en'),
   // Set the first time a learner completes or dismisses onboarding; null = never seen it
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   ...timestamps,
@@ -262,15 +275,17 @@ export const conversationPatterns = pgTable('conversation_patterns', {
   index('conversation_patterns_organization_id_idx').on(table.organizationId),
 ]);
 
-// Avatars table - AI personas with name, personality, image and voice
+// Avatars table - AI personas with a shared identity (name, image) and a
+// per-language voice + persona description in `localizations`.
 export const avatars = pgTable('avatars', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'cascade' }), // null = built-in
   name: text('name').notNull(),
-  personality: text('personality').notNull(),
   imageS3Key: text('image_s3_key'),
   imageS3Bucket: text('image_s3_bucket'),
-  voiceId: text('voice_id').notNull(),
+  // { [language]: { voiceId, description } } — `en` is always present (default/fallback),
+  // other languages optional. The avatar's voice and spoken persona follow the active language.
+  localizations: jsonb('localizations').$type<Record<string, AvatarLocalization>>().notNull().default({}),
   isBuiltIn: boolean('is_built_in').notNull().default(false),
   ...timestamps,
 }, (table) => [

@@ -10,7 +10,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useTTS } from "@/features/chat/hooks/useTTS";
 import { getVersionedAssetUrl } from "@/lib/assets";
-import { api, type Avatar as AvatarType } from "@/lib/api";
+import {
+  api,
+  avatarSupportsLanguage,
+  localizationFor,
+  LANGUAGES,
+  type Avatar as AvatarType,
+  type LanguageCode,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_OPTION = "default";
@@ -81,6 +88,33 @@ export function OnboardingModal() {
     },
   });
 
+  const languageMutation = useMutation({
+    mutationFn: (language: LanguageCode) => api.user.updatePreferences({ language }),
+    onMutate: async (language) => {
+      await queryClient.cancelQueries({ queryKey: ["user", "me"] });
+      const previous = queryClient.getQueryData<{ user: typeof profile }>(["user", "me"]);
+      if (previous?.user) {
+        queryClient.setQueryData(["user", "me"], {
+          user: { ...previous.user, language },
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["user", "me"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    },
+  });
+
+  const language: LanguageCode = profile?.language ?? "en";
+
+  // Only show avatars available in the chosen language.
+  const selectableAvatars = avatars.filter((a) => avatarSupportsLanguage(a, language));
+
   const { state: ttsState, speak, stop } = useTTS();
   const [previewingId, setPreviewingId] = useState<string | null>(null);
 
@@ -99,7 +133,8 @@ export function OnboardingModal() {
       return;
     }
     setPreviewingId(avatar.id);
-    speak(`Hi, I'm ${avatar.name}. ${avatar.personality}`, avatar.voiceId).finally(() => {
+    const localization = localizationFor(avatar, language);
+    speak(`Hi, I'm ${avatar.name}. ${localization?.description ?? ""}`, localization?.voiceId).finally(() => {
       setPreviewingId((cur) => (cur === avatar.id ? null : cur));
     });
   }
@@ -147,10 +182,28 @@ export function OnboardingModal() {
             <DialogHeader>
               <DialogTitle>Choose your avatar</DialogTitle>
             </DialogHeader>
-            <p className="-mt-2 mb-4 text-sm text-muted-foreground">
+            <p className="-mt-2 mb-3 text-sm text-muted-foreground">
               Pick the assistant that will guide your sessions. Press play to hear
               each voice.
             </p>
+
+            {/* Language selector — filters the avatars shown below */}
+            <div className="mb-4 flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Language</span>
+              <div className="flex gap-1">
+                {LANGUAGES.map(({ code, label }) => (
+                  <Button
+                    key={code}
+                    type="button"
+                    size="sm"
+                    variant={language === code ? "default" : "outline"}
+                    onClick={() => { stop(); setPreviewingId(null); languageMutation.mutate(code); }}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
 
             <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
               {/* Default option */}
@@ -178,7 +231,7 @@ export function OnboardingModal() {
                 {selectedId === DEFAULT_OPTION && <Check className="size-4 text-primary" />}
               </button>
 
-              {avatars.map((avatar) => {
+              {selectableAvatars.map((avatar) => {
                 const img = avatarImageUrl(avatar);
                 const active = selectedId === avatar.id;
                 return (
@@ -207,7 +260,7 @@ export function OnboardingModal() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{avatar.name}</p>
                       <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {avatar.personality}
+                        {localizationFor(avatar, language)?.description}
                       </p>
                     </div>
                     <Button

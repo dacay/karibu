@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff, UserCircle } from "lucide-react";
 import Image from "next/image";
-import { api, type OrgConfig, type Avatar } from "@/lib/api";
+import { api, localizationFor, type OrgConfig, type Avatar } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
 import { getLogoUrl } from "@/lib/assets";
 import { getAssetUrl } from "@/lib/assets";
@@ -492,7 +492,12 @@ export function OrganizationSection() {
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{selected.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{selected.personality?.slice(0, 80)}{(selected.personality?.length ?? 0) > 80 ? "..." : ""}</p>
+                      {(() => {
+                        const desc = localizationFor(selected, "en")?.description ?? "";
+                        return (
+                          <p className="text-xs text-muted-foreground truncate">{desc.slice(0, 80)}{desc.length > 80 ? "..." : ""}</p>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

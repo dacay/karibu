@@ -12,17 +12,17 @@ import { Badge } from "@/components/ui/badge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
-import { api, type Avatar as AvatarType } from "@/lib/api";
+import { api, localizationFor, type Avatar as AvatarType, type LanguageCode } from "@/lib/api";
 import { startTimer, track, EVENTS } from "@/lib/analytics";
 import type { ChatAvatar } from "@/features/chat";
 import type { UIMessage } from "ai";
 import { getVersionedAssetUrl } from "@/lib/assets";
 
-function buildChatAvatar(avatar: AvatarType | null): ChatAvatar | undefined {
+function buildChatAvatar(avatar: AvatarType | null, language: LanguageCode): ChatAvatar | undefined {
   if (!avatar) return undefined;
   return {
     name: avatar.name,
-    voiceId: avatar.voiceId,
+    voiceId: localizationFor(avatar, language)?.voiceId,
     image: avatar.imageS3Key ? getVersionedAssetUrl(avatar.imageS3Key, avatar.updatedAt) : undefined,
   };
 }
@@ -120,23 +120,25 @@ export default function MicrolearningChatPage() {
   // Determine effective avatar:
   // - Admin: always use ML's default avatar
   // - User: use their preferred avatar if set, otherwise use ML's default
+  const language = profileData?.user.language ?? "en";
+
   const effectiveAvatar = useMemo((): ChatAvatar | undefined => {
     const ml = mlData?.microlearning;
     if (!ml) return undefined;
 
     if (user?.role === "admin") {
-      return buildChatAvatar(ml.avatar);
+      return buildChatAvatar(ml.avatar, language);
     }
 
     // Learner: preferred avatar overrides, otherwise use the ML's own avatar
     const preferredAvatarId = profileData?.user.preferredAvatarId;
     if (preferredAvatarId && avatarsData?.avatars) {
       const preferredAvatar = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
-      if (preferredAvatar) return buildChatAvatar(preferredAvatar);
+      if (preferredAvatar) return buildChatAvatar(preferredAvatar, language);
     }
 
-    return buildChatAvatar(ml.avatar);
-  }, [mlData, profileData, avatarsData, user?.role]);
+    return buildChatAvatar(ml.avatar, language);
+  }, [mlData, profileData, avatarsData, user?.role, language]);
 
   // Restart the admin test session with a fresh chat ID and no prior messages
   const handleRestart = useCallback(() => {
@@ -215,6 +217,7 @@ export default function MicrolearningChatPage() {
           avatar={effectiveAvatar}
           autoPlayVoice={false}
           onComplete={handleComplete}
+          onLanguageChange={() => queryClient.invalidateQueries({ queryKey: ["user", "me"] })}
           onRestart={isAdminTest ? handleRestart : undefined}
           className="h-full"
         />

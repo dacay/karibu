@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api, type UserProfile } from "@/lib/api";
+import { api, avatarSupportsLanguage, LANGUAGES, type LanguageCode, type UserProfile } from "@/lib/api";
 
 const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementType }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -75,6 +75,35 @@ export function AccountMenu() {
     },
   });
 
+  const language: LanguageCode = profileData?.user.language ?? "en";
+
+  const updateLanguageMutation = useMutation({
+    mutationFn: (next: LanguageCode) => api.user.updatePreferences({ language: next }),
+    onMutate: async (next) => {
+      await queryClient.cancelQueries({ queryKey: ["user", "me"] });
+      const previous = queryClient.getQueryData<{ user: UserProfile }>(["user", "me"]);
+      if (previous?.user) {
+        queryClient.setQueryData(["user", "me"], {
+          user: { ...previous.user, language: next },
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["user", "me"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    },
+  });
+
+  // Only offer avatars that support the learner's selected language.
+  const selectableAvatars = (avatarsData?.avatars ?? []).filter((a) =>
+    avatarSupportsLanguage(a, language),
+  );
+
   const initials = user?.email ? getInitials(user.email) : "?";
 
   return (
@@ -96,7 +125,22 @@ export function AccountMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        {avatarsData?.avatars && avatarsData.avatars.length > 0 && (
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
+          Language
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={language}
+          onValueChange={(val) => updateLanguageMutation.mutate(val as LanguageCode)}
+        >
+          {LANGUAGES.map(({ code, label }) => (
+            <DropdownMenuRadioItem key={code} value={code} className="cursor-pointer">
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+
+        {selectableAvatars.length > 0 && (
           <>
             <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
               Chat Avatar
@@ -110,7 +154,7 @@ export function AccountMenu() {
               <DropdownMenuRadioItem value="default" className="cursor-pointer">
                 Use default
               </DropdownMenuRadioItem>
-              {avatarsData.avatars.map((a) => (
+              {selectableAvatars.map((a) => (
                 <DropdownMenuRadioItem key={a.id} value={a.id} className="cursor-pointer">
                   {a.name}
                 </DropdownMenuRadioItem>

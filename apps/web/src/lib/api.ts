@@ -141,40 +141,90 @@ export interface ConversationPattern {
   updatedAt: string;
 }
 
+// Supported content/learner languages. `en` is always the default and fallback.
+export type LanguageCode = "en" | "es";
+
+export const LANGUAGES: { code: LanguageCode; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "es", label: "Spanish" },
+];
+
+// Per-language voice + persona description for an avatar.
+export interface AvatarLocalization {
+  voiceId: string;
+  description: string;
+}
+
 export interface Avatar {
   id: string;
   organizationId: string | null;
   name: string;
-  personality: string;
   imageS3Key: string | null;
   imageS3Bucket: string | null;
-  voiceId: string;
+  // { [language]: { voiceId, description } } — `en` always present, others optional.
+  localizations: Record<string, AvatarLocalization>;
   isBuiltIn: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+// True when an avatar can be used in a given language: English is always
+// supported (the default), other languages only when a localization exists.
+export function avatarSupportsLanguage(avatar: Avatar, language: LanguageCode): boolean {
+  return language === "en" || !!avatar.localizations?.[language];
+}
+
+// An avatar's localization for a language, falling back to English.
+export function localizationFor(avatar: Avatar, language: LanguageCode): AvatarLocalization | undefined {
+  return avatar.localizations?.[language] ?? avatar.localizations?.en;
+}
+
 export interface DeepgramVoice {
   id: string;
   name: string;
+  language: LanguageCode;
   gender: "male" | "female";
+  accent: string;
   description: string;
 }
 
+// Static Deepgram Aura-2 voice catalog — the single source of voice metadata,
+// keyed by id. Accent is intrinsic to the voice, so it is derived here (via
+// getVoice) rather than stored on avatars.
+// NOTE: Spanish (es) voice ids are from Deepgram's Aura-2 Spanish launch. A few
+// accent/gender labels are best-effort and should be reconciled against the live
+// Deepgram voice catalog (https://developers.deepgram.com/docs/tts-models).
 export const DEEPGRAM_VOICES: DeepgramVoice[] = [
-  // Female voices
-  { id: "aura-2-asteria-en", name: "Asteria", gender: "female", description: "Warm and friendly" },
-  { id: "aura-2-luna-en", name: "Luna", gender: "female", description: "Calm, professional" },
-  { id: "aura-2-aurora-en", name: "Aurora", gender: "female", description: "Bright, energetic" },
-  { id: "aura-2-athena-en", name: "Athena", gender: "female", description: "Clear, authoritative" },
-  { id: "aura-2-hera-en", name: "Hera", gender: "female", description: "Formal, confident" },
-  // Male voices
-  { id: "aura-2-orion-en", name: "Orion", gender: "male", description: "Deep, resonant" },
-  { id: "aura-2-arcas-en", name: "Arcas", gender: "male", description: "Neutral, balanced" },
-  { id: "aura-2-apollo-en", name: "Apollo", gender: "male", description: "Clear, engaging" },
-  { id: "aura-2-orpheus-en", name: "Orpheus", gender: "male", description: "Rich, expressive" },
-  { id: "aura-2-zeus-en", name: "Zeus", gender: "male", description: "Bold, commanding" },
+  // English — female
+  { id: "aura-2-asteria-en", name: "Asteria", language: "en", gender: "female", accent: "American", description: "Warm and friendly" },
+  { id: "aura-2-luna-en", name: "Luna", language: "en", gender: "female", accent: "American", description: "Calm, professional" },
+  { id: "aura-2-aurora-en", name: "Aurora", language: "en", gender: "female", accent: "American", description: "Bright, energetic" },
+  { id: "aura-2-athena-en", name: "Athena", language: "en", gender: "female", accent: "American", description: "Clear, authoritative" },
+  { id: "aura-2-hera-en", name: "Hera", language: "en", gender: "female", accent: "American", description: "Formal, confident" },
+  // English — male
+  { id: "aura-2-orion-en", name: "Orion", language: "en", gender: "male", accent: "American", description: "Deep, resonant" },
+  { id: "aura-2-arcas-en", name: "Arcas", language: "en", gender: "male", accent: "American", description: "Neutral, balanced" },
+  { id: "aura-2-apollo-en", name: "Apollo", language: "en", gender: "male", accent: "American", description: "Clear, engaging" },
+  { id: "aura-2-orpheus-en", name: "Orpheus", language: "en", gender: "male", accent: "American", description: "Rich, expressive" },
+  { id: "aura-2-zeus-en", name: "Zeus", language: "en", gender: "male", accent: "American", description: "Bold, commanding" },
+  // Spanish — female
+  { id: "aura-2-celeste-es", name: "Celeste", language: "es", gender: "female", accent: "Colombian", description: "Energetic, friendly" },
+  { id: "aura-2-estrella-es", name: "Estrella", language: "es", gender: "female", accent: "Latin American", description: "Warm, articulate" },
+  { id: "aura-2-selena-es", name: "Selena", language: "es", gender: "female", accent: "Latin American", description: "Smooth, expressive" },
+  { id: "aura-2-carina-es", name: "Carina", language: "es", gender: "female", accent: "Peninsular", description: "Clear, professional" },
+  { id: "aura-2-diana-es", name: "Diana", language: "es", gender: "female", accent: "Peninsular", description: "Confident, polished" },
+  // Spanish — male
+  { id: "aura-2-nestor-es", name: "Néstor", language: "es", gender: "male", accent: "Peninsular", description: "Assertive, professional" },
+  { id: "aura-2-javier-es", name: "Javier", language: "es", gender: "male", accent: "Latin American", description: "Calm, measured" },
+  { id: "aura-2-aquila-es", name: "Aquila", language: "es", gender: "male", accent: "Latin American", description: "Warm, engaging" },
+  { id: "aura-2-sirio-es", name: "Sirio", language: "es", gender: "male", accent: "Mexican", description: "Deep, resonant" },
 ];
+
+// Look up static voice metadata (name, accent, language, gender) by id.
+export function getVoice(voiceId: string | undefined): DeepgramVoice | undefined {
+  if (!voiceId) return undefined;
+  return DEEPGRAM_VOICES.find((v) => v.id === voiceId);
+}
 
 export interface Microlearning {
   id: string;
@@ -231,6 +281,7 @@ export interface UserProfile {
   role: "admin" | "user";
   organizationId: string;
   preferredAvatarId: string | null;
+  language: LanguageCode;
   onboardingCompletedAt: string | null;
   defaultAvatarId: string | null;
 }
@@ -657,7 +708,7 @@ export const api = {
   user: {
     me: () =>
       request<{ user: UserProfile }>("/user/me"),
-    updatePreferences: (body: { preferredAvatarId: string | null }) =>
+    updatePreferences: (body: { preferredAvatarId?: string | null; language?: LanguageCode }) =>
       request<{ user: UserProfile }>("/user/preferences", {
         method: "PATCH",
         body: JSON.stringify(body),
