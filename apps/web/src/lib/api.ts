@@ -105,6 +105,8 @@ export interface LoginResponse {
   user: {
     id: string;
     email: string;
+    firstName: string | null;
+    lastName: string | null;
     role: "admin" | "user";
     organizationId: string;
     organizationName: string;

@@ -24,6 +24,8 @@ export interface LoginResult {
   user?: {
     id: string;
     email: string;
+    firstName: string | null;
+    lastName: string | null;
     role: 'admin' | 'user';
     organizationId: string;
     organizationName: string;
@@ -106,6 +108,8 @@ export const loginWithPassword = async (
       user: {
         id: user.id,
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
         organizationId: organization.id,
         organizationName: organization.name,
@@ -211,6 +215,8 @@ export const loginWithToken = async (
       user: {
         id: user.id,
         email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
         role: user.role,
         organizationId: organization.id,
         organizationName: organization.name,
