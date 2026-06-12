@@ -65,7 +65,13 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "flagged", label: "Flagged", icon: Flag },
 ];
 
-function getInitials(email: string): string {
+function getInitials(firstName: string | null, lastName: string | null, email: string): string {
+  if (firstName && lastName) {
+    return (firstName[0] + lastName[0]).toUpperCase();
+  }
+  if (firstName) {
+    return firstName.slice(0, 2).toUpperCase();
+  }
   const [local] = email.split("@");
   const parts = local.split(/[._-]/);
   if (parts.length >= 2) {
@@ -97,7 +103,7 @@ export function AdminRoot() {
 
   const openFlagCount = flagCount?.count ?? 0;
 
-  const initials = user?.email ? getInitials(user.email) : "?";
+  const initials = user?.email ? getInitials(user.firstName ?? null, user.lastName ?? null, user.email) : "?";
 
   return (
     <div className="flex min-h-screen bg-background">

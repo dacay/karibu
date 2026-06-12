@@ -25,7 +25,13 @@ const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementTyp
   { value: "system", label: "System", icon: Monitor },
 ];
 
-function getInitials(email: string): string {
+function getInitials(firstName: string | null, lastName: string | null, email: string): string {
+  if (firstName && lastName) {
+    return (firstName[0] + lastName[0]).toUpperCase();
+  }
+  if (firstName) {
+    return firstName.slice(0, 2).toUpperCase();
+  }
   const [local] = email.split("@");
   const parts = local.split(/[._-]/);
   if (parts.length >= 2) {
@@ -75,7 +81,7 @@ export function AccountMenu() {
     },
   });
 
-  const initials = user?.email ? getInitials(user.email) : "?";
+  const initials = user?.email ? getInitials(user.firstName ?? null, user.lastName ?? null, user.email) : "?";
 
   return (
     <DropdownMenu>
