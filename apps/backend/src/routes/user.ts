@@ -5,7 +5,7 @@ import { zValidator } from '@hono/zod-validator';
 import { authMiddleware } from '../middleware/auth.js';
 import type { UserAuthContext } from '../types/auth.js';
 import { db } from '../db/index.js';
-import { users, avatars, organizations, LANGUAGE_CODES } from '../db/schema.js';
+import { users, avatars, organizations, LANGUAGE_CODES, FONT_SIZES } from '../db/schema.js';
 import { logger } from '../config/logger.js';
 
 const userRouter = new Hono();
@@ -31,6 +31,7 @@ userRouter.get('/me', async (c) => {
       organizationId: users.organizationId,
       preferredAvatarId: users.preferredAvatarId,
       language: users.language,
+      fontSize: users.fontSize,
       onboardingCompletedAt: users.onboardingCompletedAt,
       defaultAvatarId: organizations.defaultAvatarId,
     })
@@ -49,20 +50,24 @@ userRouter.get('/me', async (c) => {
 const updatePreferencesSchema = z.object({
   preferredAvatarId: z.string().uuid().nullable().optional(),
   language: z.enum(LANGUAGE_CODES).optional(),
+  fontSize: z.enum(FONT_SIZES).optional(),
 }).refine(
-  (body) => body.preferredAvatarId !== undefined || body.language !== undefined,
+  (body) =>
+    body.preferredAvatarId !== undefined ||
+    body.language !== undefined ||
+    body.fontSize !== undefined,
   { message: 'At least one preference must be provided.' },
 );
 
 /**
  * PATCH /user/preferences
- * Update the current user's preferences (preferred avatar and/or language).
- * Body: { preferredAvatarId?: string | null, language?: 'en' | 'es' }
+ * Update the current user's preferences (preferred avatar, language, and/or font size).
+ * Body: { preferredAvatarId?: string | null, language?: 'en' | 'es', fontSize?: 'sm' | 'base' | 'lg' | 'xl' }
  */
 userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), async (c) => {
 
   const auth = c.get('auth') as UserAuthContext;
-  const { preferredAvatarId, language } = c.req.valid('json');
+  const { preferredAvatarId, language, fontSize } = c.req.valid('json');
 
   // Validate the avatar belongs to this org (or is a built-in avatar)
   if (preferredAvatarId) {
@@ -87,9 +92,10 @@ userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), as
   }
 
   // Only update the fields that were provided.
-  const updates: { preferredAvatarId?: string | null; language?: typeof language } = {};
+  const updates: { preferredAvatarId?: string | null; language?: typeof language; fontSize?: typeof fontSize } = {};
   if (preferredAvatarId !== undefined) updates.preferredAvatarId = preferredAvatarId ?? null;
   if (language !== undefined) updates.language = language;
+  if (fontSize !== undefined) updates.fontSize = fontSize;
 
   await db
     .update(users)
@@ -108,6 +114,7 @@ userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), as
       organizationId: users.organizationId,
       preferredAvatarId: users.preferredAvatarId,
       language: users.language,
+      fontSize: users.fontSize,
       onboardingCompletedAt: users.onboardingCompletedAt,
       defaultAvatarId: organizations.defaultAvatarId,
     })
@@ -116,7 +123,7 @@ userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), as
     .where(eq(users.id, auth.userId))
     .limit(1);
 
-  logger.debug({ userId: auth.userId, preferredAvatarId, language }, 'User preferences updated.');
+  logger.debug({ userId: auth.userId, preferredAvatarId, language, fontSize }, 'User preferences updated.');
 
   return c.json({ user: updated });
 });

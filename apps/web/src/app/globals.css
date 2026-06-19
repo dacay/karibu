@@ -141,3 +141,14 @@
     @apply bg-background text-foreground;
   }
 }
+
+/*
+ * Accessibility text-size preference. The root font-size scales every rem-based
+ * element (which is most of the Tailwind UI). Driven by the data-font-size
+ * attribute on <html>, set pre-paint by the inline script in layout.tsx and
+ * kept in sync with the user's saved preference by FontSizeSync.
+ */
+html[data-font-size="sm"] { font-size: 93.75%; }
+html[data-font-size="base"] { font-size: 100%; }
+html[data-font-size="lg"] { font-size: 112.5%; }
+html[data-font-size="xl"] { font-size: 125%; }

@@ -17,7 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api, avatarSupportsLanguage, LANGUAGES, type LanguageCode, type UserProfile } from "@/lib/api";
+import { api, avatarSupportsLanguage, FONT_SIZES, LANGUAGES, type FontSize, type LanguageCode, type UserProfile } from "@/lib/api";
+import { applyFontSize } from "@/components/FontSizeSync";
 
 const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementType }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -105,6 +106,33 @@ export function AccountMenu() {
     },
   });
 
+  const fontSize: FontSize = profileData?.user.fontSize ?? "base";
+
+  const updateFontSizeMutation = useMutation({
+    mutationFn: (next: FontSize) => api.user.updatePreferences({ fontSize: next }),
+    onMutate: async (next) => {
+      // Apply instantly to the DOM + localStorage so the change is immediate.
+      applyFontSize(next);
+      await queryClient.cancelQueries({ queryKey: ["user", "me"] });
+      const previous = queryClient.getQueryData<{ user: UserProfile }>(["user", "me"]);
+      if (previous?.user) {
+        queryClient.setQueryData(["user", "me"], {
+          user: { ...previous.user, fontSize: next },
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["user", "me"], context.previous);
+        applyFontSize(context.previous.user.fontSize);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    },
+  });
+
   // Only offer avatars that support the learner's selected language.
   const selectableAvatars = (avatarsData?.avatars ?? []).filter((a) =>
     avatarSupportsLanguage(a, language),
@@ -177,6 +205,21 @@ export function AccountMenu() {
           {APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => (
             <DropdownMenuRadioItem key={value} value={value} className="cursor-pointer">
               <Icon className="size-3.5 mr-2" />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
+          Text size
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={fontSize}
+          onValueChange={(val) => updateFontSizeMutation.mutate(val as FontSize)}
+        >
+          {FONT_SIZES.map(({ value, label }) => (
+            <DropdownMenuRadioItem key={value} value={value} className="cursor-pointer">
               {label}
             </DropdownMenuRadioItem>
           ))}

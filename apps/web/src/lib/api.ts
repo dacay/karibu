@@ -151,6 +151,25 @@ export const LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: "es", label: "Spanish" },
 ];
 
+// Accessibility text-size preference, applied to the web UI root font-size.
+export type FontSize = "sm" | "base" | "lg" | "xl";
+
+export const FONT_SIZES: { value: FontSize; label: string }[] = [
+  { value: "sm", label: "Small" },
+  { value: "base", label: "Default" },
+  { value: "lg", label: "Large" },
+  { value: "xl", label: "Extra Large" },
+];
+
+// Root font-size applied to <html> for each preset. Tailwind sizes in rem, so
+// this scales the whole UI proportionally.
+export const FONT_SIZE_SCALE: Record<FontSize, string> = {
+  sm: "93.75%",
+  base: "100%",
+  lg: "112.5%",
+  xl: "125%",
+};
+
 // Per-language voice + persona description for an avatar.
 export interface AvatarLocalization {
   voiceId: string;
@@ -284,6 +303,7 @@ export interface UserProfile {
   organizationId: string;
   preferredAvatarId: string | null;
   language: LanguageCode;
+  fontSize: FontSize;
   onboardingCompletedAt: string | null;
   defaultAvatarId: string | null;
 }
@@ -710,7 +730,7 @@ export const api = {
   user: {
     me: () =>
       request<{ user: UserProfile }>("/user/me"),
-    updatePreferences: (body: { preferredAvatarId?: string | null; language?: LanguageCode }) =>
+    updatePreferences: (body: { preferredAvatarId?: string | null; language?: LanguageCode; fontSize?: FontSize }) =>
       request<{ user: UserProfile }>("/user/preferences", {
         method: "PATCH",
         body: JSON.stringify(body),

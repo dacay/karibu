@@ -11,6 +11,11 @@ export const LANGUAGE_CODES = ['en', 'es'] as const;
 export type LanguageCode = (typeof LANGUAGE_CODES)[number];
 export const languageEnum = pgEnum('language', LANGUAGE_CODES);
 
+// Learner's accessibility text-size preference, applied to the web UI root font-size.
+export const FONT_SIZES = ['sm', 'base', 'lg', 'xl'] as const;
+export type FontSize = (typeof FONT_SIZES)[number];
+export const fontSizeEnum = pgEnum('font_size', FONT_SIZES);
+
 // Per-language voice + persona description for an avatar, stored in avatars.localizations.
 export interface AvatarLocalization {
   voiceId: string;
@@ -52,6 +57,8 @@ export const users = pgTable('users', {
   preferredAvatarId: uuid('preferred_avatar_id'),
   // Learner's chosen language for AI responses and voice. Drives the avatar localization used.
   language: languageEnum('language').notNull().default('en'),
+  // Learner's accessibility text-size preference for the web UI.
+  fontSize: fontSizeEnum('font_size').notNull().default('base'),
   // Set the first time a learner completes or dismisses onboarding; null = never seen it
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
   ...timestamps,
