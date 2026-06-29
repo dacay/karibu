@@ -235,7 +235,6 @@ function MlForm({
   initial = {},
   topics,
   patterns,
-  avatars,
   onSave,
   onCancel,
   isLoading,
@@ -244,7 +243,6 @@ function MlForm({
   initial?: Partial<MlFormValues>;
   topics: DnaTopic[];
   patterns: ConversationPattern[];
-  avatars: Avatar[];
   onSave: (v: MlFormValues) => void;
   onCancel: () => void;
   isLoading: boolean;
@@ -314,7 +312,7 @@ function MlForm({
   );
   const hasValidSubtopicSelection = unsatisfiedTopicIds.size === 0;
   const canSubmit =
-    title.trim() && topicIds.length > 0 && hasValidSubtopicSelection && patternId && avatarId;
+    title.trim() && topicIds.length > 0 && hasValidSubtopicSelection && patternId;
 
   return (
     <div className="flex flex-col gap-3 p-4 border rounded-lg bg-muted/30">
@@ -408,13 +406,6 @@ function MlForm({
         <label className="text-xs font-medium text-muted-foreground">Pattern <span className="text-destructive">*</span></label>
         <NativeSelect value={patternId} onChange={setPatternId} placeholder="Select pattern">
           {patterns.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </NativeSelect>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-muted-foreground">Avatar <span className="text-destructive">*</span></label>
-        <NativeSelect value={avatarId} onChange={setAvatarId} placeholder="Select avatar">
-          {avatars.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
         </NativeSelect>
       </div>
 
@@ -555,7 +546,6 @@ function MlRow({
         }}
         topics={topics}
         patterns={patterns}
-        avatars={avatars}
         onSave={onSaveEdit}
         onCancel={onCancelEdit}
         isLoading={isSavingEdit}
@@ -1303,7 +1293,6 @@ export function MicrolearningsSection() {
                 <MlForm
                   topics={topics}
                   patterns={patterns}
-                  avatars={avatars}
                   onSave={(v) => createMlMutation.mutate(v)}
                   onCancel={() => setCreatingMl(false)}
                   isLoading={createMlMutation.isPending}

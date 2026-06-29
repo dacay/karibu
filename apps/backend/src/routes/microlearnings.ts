@@ -458,7 +458,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
     topicIds: string[];
     subtopicIds?: string[];
     patternId: string;
-    avatarId: string;
+    avatarId?: string | null;
     sequenceId?: string | null;
     position?: number | null;
     confettiEnabled?: boolean;
@@ -473,8 +473,15 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
   if (!body.patternId) {
     return c.json({ error: 'Pattern is required.' }, 400);
   }
-  if (!body.avatarId) {
-    return c.json({ error: 'Avatar is required.' }, 400);
+
+  let avatarId = body.avatarId || null;
+  if (!avatarId) {
+    const [org] = await db
+      .select({ defaultAvatarId: organizations.defaultAvatarId })
+      .from(organizations)
+      .where(eq(organizations.id, auth.organizationId))
+      .limit(1);
+    avatarId = org?.defaultAvatarId ?? null;
   }
 
   const [ml] = await db
@@ -486,7 +493,7 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
       topicIds: body.topicIds,
       subtopicIds: body.subtopicIds ?? [],
       patternId: body.patternId ?? null,
-      avatarId: body.avatarId ?? null,
+      avatarId,
       sequenceId: body.sequenceId ?? null,
       position: body.position ?? null,
       confettiEnabled: body.confettiEnabled ?? false,
