@@ -201,7 +201,7 @@ The auto-discover feature analyzes all processed document chunks in ChromaDB and
 | `PATCH` | `/dna/subtopics/:id/status` | admin | Accept (`active`) or reject a suggested subtopic |
 
 ### ChromaDB Dependency
-Requires processed documents (status `processed` in DB and chunks in ChromaDB). Uses `sampleDocumentChunks()` from `src/services/chromadb.ts` which calls `collection.get()` with org filter.
+Requires processed documents (status `processed` in DB and chunks in ChromaDB). Uses `sampleDocumentChunks()` from `src/services/chromadb.ts`. Rather than a head slice (which over-represents the first-inserted document and only its opening chunks), it fetches all of the org's chunks, allocates a budget (default 800) across documents round-robin, and picks each document's quota evenly strided across its full length — so discovery stays representative regardless of corpus size and a single large document can't dominate the suggestions.
 
 ## ML Cover Image Generation
 

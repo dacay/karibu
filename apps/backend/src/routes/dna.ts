@@ -707,8 +707,8 @@ dnaRouter.post('/discover', requireRole('admin'), async (c) => {
     }, 422);
   }
 
-  // Sample a broad set of chunks for analysis
-  const sample = await sampleDocumentChunks(auth.organizationId, 40);
+  // Sample a balanced, representative set of chunks across all documents for analysis.
+  const sample = await sampleDocumentChunks(auth.organizationId);
   const chunks = sample.documents.filter((d): d is string => d !== null && d.length > 0);
 
   if (chunks.length === 0) {
@@ -717,7 +717,7 @@ dnaRouter.post('/discover', requireRole('admin'), async (c) => {
     }, 422);
   }
 
-  const context = chunks.slice(0, 30).join('\n\n---\n\n');
+  const context = chunks.join('\n\n---\n\n');
 
   // Load existing topic names to avoid duplicates
   const existingTopics = await db
@@ -745,8 +745,8 @@ Return ONLY a JSON array (no markdown, no explanation) in this exact format:
 ]
 
 Guidelines:
-- Suggest 3 to 6 distinct topics covering the major knowledge domains in the excerpts
-- Each topic should have 2 to 4 subtopics
+- Suggest ${env.DNA_DISCOVERY_MIN_TOPICS} to ${env.DNA_DISCOVERY_MAX_TOPICS} distinct topics covering the major knowledge domains in the excerpts
+- Each topic should have ${env.DNA_DISCOVERY_MIN_SUBTOPICS} to ${env.DNA_DISCOVERY_MAX_SUBTOPICS} subtopics
 - Base all suggestions strictly on the provided excerpts, do not add outside knowledge
 - Keep names concise (3-6 words) and descriptions clear
 

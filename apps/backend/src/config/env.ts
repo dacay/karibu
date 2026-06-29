@@ -76,6 +76,12 @@ const envSchema = z.object({
   DNA_SYNTHESIS_MAX_VALUES: z.string().default('10').transform(Number),
   DNA_SYNTHESIS_MAX_WORDS_PER_VALUE: z.string().default('50').transform(Number),
 
+  // DNA Discovery (topic/subtopic suggestion counts requested from the model)
+  DNA_DISCOVERY_MIN_TOPICS: z.string().default('3').transform(Number),
+  DNA_DISCOVERY_MAX_TOPICS: z.string().default('6').transform(Number),
+  DNA_DISCOVERY_MIN_SUBTOPICS: z.string().default('2').transform(Number),
+  DNA_DISCOVERY_MAX_SUBTOPICS: z.string().default('4').transform(Number),
+
   // ChromaDB Cloud (Vector Database)
   CHROMA_API_KEY: z.string().min(1),
   CHROMA_TENANT: z.string().min(1),

@@ -244,27 +244,103 @@ export const queryManual = async (
 }
 
 /**
- * Sample document chunks for an organization without a specific query.
- * Returns up to `limit` chunks, useful for broad content analysis like auto-discovery.
+ * Sample document chunks for an organization without a specific query, useful for
+ * broad content analysis like auto-discovery.
+ *
+ * A plain `get` with a `limit` returns a contiguous head slice of the collection,
+ * which over-represents whichever document was inserted first (and only its opening
+ * chunks). To stay representative regardless of corpus size this instead:
+ *   1. fetches every chunk for the org (a metadata scan — cheap),
+ *   2. when the total exceeds `cap`, allocates the cap across documents round-robin
+ *      so a single large document cannot crowd out smaller ones, and
+ *   3. picks each document's quota evenly strided across its full length, so a
+ *      document is characterized by its whole span rather than just its intro.
+ * Results are interleaved across documents so any downstream truncation stays balanced.
  */
 export const sampleDocumentChunks = async (
   organizationId: string,
-  limit = 40
+  cap = 800
 ): Promise<{ ids: string[]; documents: (string | null)[] }> => {
 
   const collection = await getDocumentCollection();
 
   const results = await collection.get({
     where: { organizationId },
-    limit,
   });
 
-  logger.debug({ organizationId, count: results.ids.length }, 'Document chunks sampled from ChromaDB.');
+  // Group chunk positions by document, recovering the document id and in-doc index
+  // from the `${documentId}_chunk_${i}` id format written by addDocumentChunks.
+  const byDocument = new Map<string, { id: string; document: string | null; index: number }[]>();
 
-  return {
-    ids: results.ids,
-    documents: results.documents,
-  };
+  results.ids.forEach((id, i) => {
+    const sep = id.lastIndexOf('_chunk_');
+    const documentId = sep === -1 ? id : id.slice(0, sep);
+    const index = sep === -1 ? i : Number(id.slice(sep + '_chunk_'.length));
+
+    const list = byDocument.get(documentId) ?? [];
+    list.push({ id, document: results.documents[i] ?? null, index: Number.isNaN(index) ? i : index });
+    byDocument.set(documentId, list);
+  });
+
+  // Sort each document's chunks into reading order so striding spans beginning → end.
+  for (const list of byDocument.values()) {
+    list.sort((a, b) => a.index - b.index);
+  }
+
+  const docIds = [...byDocument.keys()];
+  const total = results.ids.length;
+
+  // Allocate the cap across documents round-robin: each pass hands one slot to every
+  // document that still has chunks left, so small documents fill up and the remainder
+  // flows to larger ones — never one document monopolizing the budget.
+  const quota = new Map<string, number>(docIds.map((d) => [d, 0]));
+  let slots = Math.min(cap, total);
+  while (slots > 0) {
+    let progressed = false;
+    for (const docId of docIds) {
+      if (slots === 0) break;
+      if ((quota.get(docId) ?? 0) < byDocument.get(docId)!.length) {
+        quota.set(docId, (quota.get(docId) ?? 0) + 1);
+        slots--;
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+  }
+
+  // For each document, pick its quota evenly strided across its full set of chunks.
+  const picked = new Map<string, { id: string; document: string | null }[]>();
+  for (const docId of docIds) {
+    const list = byDocument.get(docId)!;
+    const take = quota.get(docId) ?? 0;
+    const chosen =
+      take >= list.length
+        ? list
+        : Array.from({ length: take }, (_, k) => list[Math.floor((k * list.length) / take)]);
+    picked.set(docId, chosen.map(({ id, document }) => ({ id, document })));
+  }
+
+  // Interleave across documents (round-robin) so the result stays balanced even if
+  // the caller only consumes a prefix of it.
+  const ids: string[] = [];
+  const documents: (string | null)[] = [];
+  const maxLen = Math.max(0, ...docIds.map((d) => picked.get(d)!.length));
+  for (let round = 0; round < maxLen; round++) {
+    for (const docId of docIds) {
+      const item = picked.get(docId)![round];
+      if (item) {
+        ids.push(item.id);
+        documents.push(item.document);
+      }
+    }
+  }
+
+  logger.debug(
+    { organizationId, total, documentCount: docIds.length, sampled: ids.length },
+    'Document chunks sampled from ChromaDB.'
+  );
+
+  return { ids, documents };
 }
 
 /**
