@@ -42,6 +42,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -499,6 +502,7 @@ interface MlRowProps {
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   onRemoveFromSequence?: () => void;
+  onAddToSequence: (targetSeqId: string) => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (values: MlFormValues) => void;
@@ -528,6 +532,7 @@ function MlRow({
   onDrop,
   onDragEnd,
   onRemoveFromSequence,
+  onAddToSequence,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -733,6 +738,25 @@ function MlRow({
               Remove from sequence
             </DropdownMenuItem>
           )}
+          {sequences.length > 0 && (() => {
+            const targetSequences = sequences.filter((s) => s.id !== ml.sequenceId);
+            if (targetSequences.length === 0) return null;
+            return (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <ListOrdered className="size-3.5 mr-2" />
+                  {ml.sequenceId ? "Move to sequence" : "Add to sequence"}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {targetSequences.map((s) => (
+                    <DropdownMenuItem key={s.id} onClick={() => onAddToSequence(s.id)}>
+                      {s.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })()}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onDelete}
@@ -1211,6 +1235,18 @@ export function MicrolearningsSection() {
                               newSourceOrder: seqMls.filter((m) => m.id !== ml.id).map((m) => m.id),
                             })
                           }
+                          onAddToSequence={(targetSeqId) => {
+                            const targetSeq = sequences.find((s) => s.id === targetSeqId);
+                            if (!targetSeq) return;
+                            const newTargetOrder = [...targetSeq.microlearnings.map((m) => m.id), ml.id];
+                            moveMutation.mutate({
+                              mlId: ml.id,
+                              toGroup: targetSeqId,
+                              newTargetOrder,
+                              fromGroup: seq.id,
+                              newSourceOrder: seqMls.filter((m) => m.id !== ml.id).map((m) => m.id),
+                            });
+                          }}
                           onStartEdit={() => setEditingMlId(ml.id)}
                           onCancelEdit={() => setEditingMlId(null)}
                           onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
@@ -1295,6 +1331,18 @@ export function MicrolearningsSection() {
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onDragEnd={handleDragEnd}
+                    onAddToSequence={(targetSeqId) => {
+                      const targetSeq = sequences.find((s) => s.id === targetSeqId);
+                      if (!targetSeq) return;
+                      const newTargetOrder = [...targetSeq.microlearnings.map((m) => m.id), ml.id];
+                      moveMutation.mutate({
+                        mlId: ml.id,
+                        toGroup: targetSeqId,
+                        newTargetOrder,
+                        fromGroup: UNASSIGNED,
+                        newSourceOrder: null,
+                      });
+                    }}
                     onStartEdit={() => setEditingMlId(ml.id)}
                     onCancelEdit={() => setEditingMlId(null)}
                     onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
