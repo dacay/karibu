@@ -22,6 +22,7 @@ import {
   FlaskConical,
   ImageIcon,
   Sparkles,
+  ChevronDown,
 } from "lucide-react";
 import { getVersionedAssetUrl } from "@/lib/assets";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -498,6 +502,7 @@ interface MlRowProps {
   onDrop: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   onRemoveFromSequence?: () => void;
+  onAddToSequence: (targetSeqId: string) => void;
   onStartEdit: () => void;
   onCancelEdit: () => void;
   onSaveEdit: (values: MlFormValues) => void;
@@ -527,6 +532,7 @@ function MlRow({
   onDrop,
   onDragEnd,
   onRemoveFromSequence,
+  onAddToSequence,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -732,6 +738,25 @@ function MlRow({
               Remove from sequence
             </DropdownMenuItem>
           )}
+          {sequences.length > 0 && (() => {
+            const targetSequences = sequences.filter((s) => s.id !== ml.sequenceId);
+            if (targetSequences.length === 0) return null;
+            return (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <ListOrdered className="size-3.5 mr-2" />
+                  {ml.sequenceId ? "Move to sequence" : "Add to sequence"}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {targetSequences.map((s) => (
+                    <DropdownMenuItem key={s.id} onClick={() => onAddToSequence(s.id)}>
+                      {s.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            );
+          })()}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={onDelete}
@@ -758,6 +783,9 @@ export function MicrolearningsSection() {
   // Inline editing
   const [editingMlId, setEditingMlId] = useState<string | null>(null);
   const [editingSeqId, setEditingSeqId] = useState<string | null>(null);
+
+  // Collapse state — tracks which sequences are collapsed (all expanded by default)
+  const [collapsedSeqIds, setCollapsedSeqIds] = useState<Set<string>>(new Set());
 
   // Drag state
   const dragRef = useRef<{ mlId: string; fromGroup: string } | null>(null);
@@ -1086,13 +1114,26 @@ export function MicrolearningsSection() {
             const isEditingSeq = editingSeqId === seq.id;
             const seqMls = seq.microlearnings;
             const isDraggingOver = dropTarget?.groupId === seq.id;
+            const isCollapsed = collapsedSeqIds.has(seq.id) && !isDraggingOver;
 
             return (
               <div key={seq.id} className="rounded-xl border bg-muted/20 overflow-hidden">
 
                 {/* Sequence header band */}
-                <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30">
-                  <ListOrdered className="size-4 shrink-0 text-muted-foreground" />
+                <div className={["flex items-center gap-3 px-4 py-3 bg-muted/30", isCollapsed ? "" : "border-b"].join(" ")}>
+                  <button
+                    type="button"
+                    onClick={() => setCollapsedSeqIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(seq.id)) next.delete(seq.id);
+                      else next.add(seq.id);
+                      return next;
+                    })}
+                    className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={isCollapsed ? "Expand sequence" : "Collapse sequence"}
+                  >
+                    <ChevronDown className={["size-4 transition-transform duration-200", isCollapsed ? "-rotate-90" : ""].join(" ")} />
+                  </button>
 
                   <div className="flex-1 min-w-0">
                     {isEditingSeq ? (
@@ -1149,70 +1190,84 @@ export function MicrolearningsSection() {
                 </div>
 
                 {/* Sequence ML list */}
-                <div
-                  onDragOver={(e) => handleGroupDragOver(e, seq.id, seqMls.length)}
-                  onDrop={handleDrop}
-                  className={[
-                    "p-2 space-y-1.5 min-h-16 transition-colors",
-                    isDraggingOver && seqMls.length === 0 ? "bg-primary/5" : "",
-                  ].join(" ")}
-                >
-                  {seqMls.length === 0 && !isDraggingOver && (
-                    <div className="flex items-center justify-center h-12">
-                      <p className="text-xs text-muted-foreground/60 italic">
-                        Drop microlearnings here
-                      </p>
-                    </div>
-                  )}
+                {!isCollapsed && (
+                  <div
+                    onDragOver={(e) => handleGroupDragOver(e, seq.id, seqMls.length)}
+                    onDrop={handleDrop}
+                    className={[
+                      "p-2 space-y-1.5 min-h-16 transition-colors",
+                      isDraggingOver && seqMls.length === 0 ? "bg-primary/5" : "",
+                    ].join(" ")}
+                  >
+                    {seqMls.length === 0 && !isDraggingOver && (
+                      <div className="flex items-center justify-center h-12">
+                        <p className="text-xs text-muted-foreground/60 italic">
+                          Drop microlearnings here
+                        </p>
+                      </div>
+                    )}
 
-                  {seqMls.map((ml, index) => (
-                    <Fragment key={ml.id}>
-                      <DropLine visible={dropTarget?.groupId === seq.id && dropTarget.beforeIndex === index} />
-                      <MlRow
-                        ml={ml}
-                        index={index}
-                        groupId={seq.id}
-                        dropTarget={dropTarget}
-                        isDragging={draggingMlId === ml.id}
-                        isPending={pendingMlId === ml.id}
-                        topics={topics}
-                        patterns={patterns}
-                        avatars={avatars}
-                        sequences={sequences}
-                        editingMlId={editingMlId}
-                        onDragStart={handleDragStart}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onDragEnd={handleDragEnd}
-                        onRemoveFromSequence={() =>
-                          moveMutation.mutate({
-                            mlId: ml.id,
-                            toGroup: UNASSIGNED,
-                            newTargetOrder: [],
-                            fromGroup: seq.id,
-                            newSourceOrder: seqMls.filter((m) => m.id !== ml.id).map((m) => m.id),
-                          })
-                        }
-                        onStartEdit={() => setEditingMlId(ml.id)}
-                        onCancelEdit={() => setEditingMlId(null)}
-                        onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
-                        isSavingEdit={updateMlMutation.isPending && updateMlMutation.variables?.id === ml.id}
-                        onToggleStatus={() =>
-                          toggleStatusMutation.mutate({
-                            id: ml.id,
-                            status: ml.status === "draft" ? "published" : "draft",
-                          })
-                        }
-                        isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
-                        onDelete={() => deleteMlMutation.mutate(ml.id)}
-                        isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
-                        onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
-                        isRegeneratingImage={pendingImageIds.has(ml.id)}
-                      />
-                    </Fragment>
-                  ))}
-                  <DropLine visible={dropTarget?.groupId === seq.id && dropTarget.beforeIndex === seqMls.length} />
-                </div>
+                    {seqMls.map((ml, index) => (
+                      <Fragment key={ml.id}>
+                        <DropLine visible={dropTarget?.groupId === seq.id && dropTarget.beforeIndex === index} />
+                        <MlRow
+                          ml={ml}
+                          index={index}
+                          groupId={seq.id}
+                          dropTarget={dropTarget}
+                          isDragging={draggingMlId === ml.id}
+                          isPending={pendingMlId === ml.id}
+                          topics={topics}
+                          patterns={patterns}
+                          avatars={avatars}
+                          sequences={sequences}
+                          editingMlId={editingMlId}
+                          onDragStart={handleDragStart}
+                          onDragOver={handleDragOver}
+                          onDrop={handleDrop}
+                          onDragEnd={handleDragEnd}
+                          onRemoveFromSequence={() =>
+                            moveMutation.mutate({
+                              mlId: ml.id,
+                              toGroup: UNASSIGNED,
+                              newTargetOrder: [],
+                              fromGroup: seq.id,
+                              newSourceOrder: seqMls.filter((m) => m.id !== ml.id).map((m) => m.id),
+                            })
+                          }
+                          onAddToSequence={(targetSeqId) => {
+                            const targetSeq = sequences.find((s) => s.id === targetSeqId);
+                            if (!targetSeq) return;
+                            const newTargetOrder = [...targetSeq.microlearnings.map((m) => m.id), ml.id];
+                            moveMutation.mutate({
+                              mlId: ml.id,
+                              toGroup: targetSeqId,
+                              newTargetOrder,
+                              fromGroup: seq.id,
+                              newSourceOrder: seqMls.filter((m) => m.id !== ml.id).map((m) => m.id),
+                            });
+                          }}
+                          onStartEdit={() => setEditingMlId(ml.id)}
+                          onCancelEdit={() => setEditingMlId(null)}
+                          onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
+                          isSavingEdit={updateMlMutation.isPending && updateMlMutation.variables?.id === ml.id}
+                          onToggleStatus={() =>
+                            toggleStatusMutation.mutate({
+                              id: ml.id,
+                              status: ml.status === "draft" ? "published" : "draft",
+                            })
+                          }
+                          isTogglingStatus={toggleStatusMutation.isPending && toggleStatusMutation.variables?.id === ml.id}
+                          onDelete={() => deleteMlMutation.mutate(ml.id)}
+                          isDeleting={deleteMlMutation.isPending && deleteMlMutation.variables === ml.id}
+                          onRegenerateImage={() => regenerateImageMutation.mutate(ml.id)}
+                          isRegeneratingImage={pendingImageIds.has(ml.id)}
+                        />
+                      </Fragment>
+                    ))}
+                    <DropLine visible={dropTarget?.groupId === seq.id && dropTarget.beforeIndex === seqMls.length} />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1276,6 +1331,18 @@ export function MicrolearningsSection() {
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
                     onDragEnd={handleDragEnd}
+                    onAddToSequence={(targetSeqId) => {
+                      const targetSeq = sequences.find((s) => s.id === targetSeqId);
+                      if (!targetSeq) return;
+                      const newTargetOrder = [...targetSeq.microlearnings.map((m) => m.id), ml.id];
+                      moveMutation.mutate({
+                        mlId: ml.id,
+                        toGroup: targetSeqId,
+                        newTargetOrder,
+                        fromGroup: UNASSIGNED,
+                        newSourceOrder: null,
+                      });
+                    }}
                     onStartEdit={() => setEditingMlId(ml.id)}
                     onCancelEdit={() => setEditingMlId(null)}
                     onSaveEdit={(v) => updateMlMutation.mutate({ id: ml.id, v })}
