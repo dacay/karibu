@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  BookOpen, CheckCircle2, Clock, MessageCircle, ChevronRight, ListOrdered,
+  BookOpen, CheckCircle2, Clock, MessageCircle, ChevronRight,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -277,31 +277,6 @@ export function LearnerRoot() {
   const archive = feedData?.archive ?? [];
   const isEmpty = !feedLoading && active.length === 0 && archive.length === 0;
 
-  const { sequenceGroups, standaloneMLs } = useMemo(() => {
-    const groups: { name: string; mls: LearnerFeedML[] }[] = [];
-    const standalone: LearnerFeedML[] = [];
-    const seqMap = new Map<string, LearnerFeedML[]>();
-
-    for (const ml of active) {
-      if (ml.sequenceName) {
-        let list = seqMap.get(ml.sequenceName);
-        if (!list) {
-          list = [];
-          seqMap.set(ml.sequenceName, list);
-        }
-        list.push(ml);
-      } else {
-        standalone.push(ml);
-      }
-    }
-
-    for (const [name, mls] of seqMap) {
-      groups.push({ name, mls });
-    }
-
-    return { sequenceGroups: groups, standaloneMLs: standalone };
-  }, [active]);
-
   return (
     <div className="flex min-h-screen flex-col">
       {process.env.NEXT_PUBLIC_LEARNER_ONBOARDING_ENABLED === "true" && (
@@ -368,36 +343,9 @@ export function LearnerRoot() {
           </div>
         ) : (
           <div className="flex flex-col gap-8">
-            {/* ── Active MLs grouped by sequence ───────────────────────── */}
-            {sequenceGroups.length > 0 && (
-              <Accordion
-                type="multiple"
-                defaultValue={sequenceGroups.map((g) => g.name)}
-              >
-                {sequenceGroups.map((group) => (
-                  <AccordionItem key={group.name} value={group.name} className="border-none">
-                    <AccordionTrigger className="py-2 text-sm hover:no-underline hover:text-foreground">
-                      <span className="flex items-center gap-2">
-                        <ListOrdered className="size-4 text-muted-foreground" />
-                        <span className="font-medium">{group.name}</span>
-                        <span className="text-xs font-normal text-muted-foreground">({group.mls.length})</span>
-                      </span>
-                    </AccordionTrigger>
-                    <AccordionContent>
-                      <div className="grid gap-6 pt-2 grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
-                        {group.mls.map((ml) => (
-                          <ActiveMLCard key={ml.id} ml={ml} />
-                        ))}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            )}
-
-            {/* ── Standalone MLs + Ask me anything ─────────────────────── */}
+            {/* ── Active MLs + Ask me anything (last cell) ───────────────── */}
             <div className="grid gap-6 grid-cols-1 sm:[grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]">
-              {standaloneMLs.map((ml) => (
+              {active.map((ml) => (
                 <ActiveMLCard key={ml.id} ml={ml} />
               ))}
               <AskMeAnythingCard />
