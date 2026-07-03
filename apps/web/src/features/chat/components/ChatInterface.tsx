@@ -39,19 +39,73 @@ function stripMarkdown(text: string): string {
     .replace(/~~(.+?)~~/g, "$1")
     .replace(/^\s*>\s?/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "")
-    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/^\s*(\d+)\.\s+/gm, "$1. ")
     .replace(/^[-*_]{3,}$/gm, "")
     .replace(/\|/g, " ")
     .replace(/<[^>]+>/g, "")
     .replace(/[*_`#]/g, "")
+    // ── Speech normalization (spoken form, not visual) ──
+    // Expand Latin abbreviations Deepgram mangles ("e.g." etc.), and turn
+    // parentheticals into comma-delimited asides so they get a natural pause
+    // instead of running straight into the surrounding sentence.
+    .replace(/\be\.g\./gi, "for example")
+    .replace(/\bi\.e\./gi, "that is")
+    .replace(/\betc\./gi, "and so on")
+    .replace(/\bvs\.?/gi, "versus")
+    .replace(/[“”"]/g, "")              // Deepgram shifts voice for quoted spans; drop the quotes
+    .replace(/\s+\/\s+/g, ", ")         // spaced slash "A / B" reads as a hard stop → soft comma pause
+    .replace(/\s*[()]\s*/g, ", ")
     .replace(/\s+/g, " ")
-    .trim();
+    .replace(/,\s*(?=[.,!?;:])/g, "")   // comma sitting directly before other punctuation
+    .replace(/([:;])\s*,\s*/g, "$1 ")   // punctuation immediately followed by a stray comma
+    .replace(/,\s*,+/g, ", ")           // collapse doubled commas
+    .trim()
+    .replace(/^[\s,]+/, "");            // strip a leading comma left by an opening paren
 }
 
-// ─── Token buffering config ─────────────────────────────────────────────────
+// ─── Utterance segmentation for TTS ─────────────────────────────────────────
 
-/** Number of words to accumulate before sending a chunk to TTS. */
-const MIN_WORDS = 3;
+/**
+ * Carve complete "utterances" out of buffered RAW (un-stripped) text so each
+ * one can be markdown-stripped and sent to Deepgram whole.
+ *
+ * Boundaries are newlines and sentence punctuation *followed by whitespace* — so
+ * decimals ("3.14") and the dot in a list marker ("1. Confirm") are NOT treated
+ * as sentence ends. A completed segment that still has no letters (a bare "1.")
+ * is held back and merged into the next one, so the list number stays attached
+ * to its item and is read in context ("One. Prepare…") rather than in isolation.
+ *
+ * Returns the finished utterances plus the trailing partial to keep buffered.
+ */
+function takeUtterances(buf: string): { utterances: string[]; rest: string } {
+  const boundary = /\n+|[.!?]+(?=\s)/g;
+  const utterances: string[] = [];
+  let last = 0;
+  let pending = "";
+  let m: RegExpExecArray | null;
+  while ((m = boundary.exec(buf)) !== null) {
+    const end = m.index + m[0].length;
+    pending += buf.slice(last, end);
+    last = end;
+    if (/[a-zA-Z]/.test(pending)) {
+      utterances.push(pending);
+      pending = "";
+    }
+  }
+  return { utterances, rest: pending + buf.slice(last) };
+}
+
+/**
+ * List items and headers have no terminal punctuation, so Deepgram would read
+ * them straight into the next line as one run-on sentence. Give every chunk a
+ * real full stop: Deepgram does NOT pause on a trailing `:` `;` or `,`, so strip
+ * those and append a period unless the chunk already ends in `.` `!` or `?`.
+ */
+function withSentenceStop(s: string): string {
+  const trimmed = s.replace(/[\s:;,]+$/, "");
+  if (!trimmed) return trimmed;
+  return /[.!?]$/.test(trimmed) ? trimmed : trimmed + ".";
+}
 
 export function ChatInterface({
   endpoint,
@@ -267,17 +321,17 @@ export function ChatInterface({
     if (justFinishedStreaming && streamControllerRef.current) {
       const last = messages[messages.length - 1] as UIMessage | undefined;
       if (last?.role === "assistant") {
-        const fullText = stripMarkdown(extractText(last));
-        const remaining = fullText.slice(sentCharsRef.current);
-        if (remaining.length > 0) {
-          streamControllerRef.current.sendChunk(remaining);
-          sentCharsRef.current = fullText.length;
+        // Pull in any raw text that streamed in after the last chunk effect,
+        // then strip + send the whole remaining buffer as the final utterance.
+        const rawFull = extractText(last);
+        chunkBufferRef.current += rawFull.slice(sentCharsRef.current);
+        sentCharsRef.current = rawFull.length;
+
+        const clean = stripMarkdown(chunkBufferRef.current);
+        if (clean.length > 0) {
+          streamControllerRef.current.sendChunk(withSentenceStop(clean) + " ");
         }
-        // Also flush anything left in the word buffer
-        if (chunkBufferRef.current.length > 0) {
-          streamControllerRef.current.sendChunk(chunkBufferRef.current);
-          chunkBufferRef.current = "";
-        }
+        chunkBufferRef.current = "";
       }
 
       streamControllerRef.current.finish();
@@ -292,23 +346,27 @@ export function ChatInterface({
   useEffect(() => {
     if (status !== "streaming" || !streamControllerRef.current) return;
 
+    const controller = streamControllerRef.current;
     const last = messages[messages.length - 1] as UIMessage | undefined;
     if (last?.role !== "assistant") return;
 
-    const fullText = stripMarkdown(extractText(last));
-    const newText = fullText.slice(sentCharsRef.current);
+    // Cursor tracks the RAW, append-only message text so it never drifts.
+    // (stripMarkdown is NOT prefix-stable across streaming ticks — cursoring
+    // into its cumulative output drops characters at token boundaries.)
+    const rawFull = extractText(last);
+    const newRaw = rawFull.slice(sentCharsRef.current);
+    if (newRaw.length === 0) return;
 
-    if (newText.length === 0) return;
+    chunkBufferRef.current += newRaw;
+    sentCharsRef.current = rawFull.length;
 
-    // Accumulate into buffer
-    chunkBufferRef.current += newText;
-    sentCharsRef.current = fullText.length;
-
-    // Send every N words for minimal latency
-    const words = chunkBufferRef.current.trim().split(/\s+/);
-    if (words.length >= MIN_WORDS) {
-      streamControllerRef.current.sendChunk(chunkBufferRef.current);
-      chunkBufferRef.current = "";
+    // Flush complete utterances; keep the trailing partial buffered so markdown
+    // tokens (and list markers) are stripped whole, never split across a chunk.
+    const { utterances, rest } = takeUtterances(chunkBufferRef.current);
+    chunkBufferRef.current = rest;
+    for (const utterance of utterances) {
+      const clean = stripMarkdown(utterance);
+      if (clean.length > 0) controller.sendChunk(withSentenceStop(clean) + " ");
     }
   }, [status, messages]);
 

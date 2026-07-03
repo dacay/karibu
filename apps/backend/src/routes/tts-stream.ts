@@ -37,6 +37,9 @@ export function handleTTSStream(clientWs: WebSocket, voiceId: string) {
   });
 
   let dgOpen = false;
+  // Set when the client asks to close: we hold Deepgram's Close until it has
+  // acknowledged the Flush, otherwise Close truncates the tail of the audio.
+  let closeAfterFlush = false;
   const pendingMessages: string[] = [];
 
   dgWs.on('open', () => {
@@ -60,6 +63,11 @@ export function handleTTSStream(clientWs: WebSocket, voiceId: string) {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'Flushed') {
           clientWs.send(JSON.stringify({ type: 'flushed' }));
+          // All buffered text has now been synthesized and sent — safe to close.
+          if (closeAfterFlush && dgWs.readyState === WebSocket.OPEN) {
+            dgWs.send(JSON.stringify({ type: 'Close' }));
+            closeAfterFlush = false;
+          }
         }
       } catch {
         // Ignore unparseable messages
@@ -106,7 +114,10 @@ export function handleTTSStream(clientWs: WebSocket, voiceId: string) {
           forward(JSON.stringify({ type: 'Flush' }));
           break;
         case 'close':
-          forward(JSON.stringify({ type: 'Close' }));
+          // Don't forward Close now — wait for the 'Flushed' ack (see above) so
+          // the final audio isn't cut off. finish() always sends 'flush' first,
+          // so a Flushed is guaranteed to arrive.
+          closeAfterFlush = true;
           break;
         default:
           break;
