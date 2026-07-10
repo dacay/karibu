@@ -1,12 +1,21 @@
 import type { MiddlewareHandler } from 'hono';
 import { eq } from 'drizzle-orm';
+import ms, { type StringValue } from 'ms';
 import { db } from '../db/index.js';
 import { organizations } from '../db/schema.js';
 import { LRUCache } from '../utils/cache.js';
+import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import type { Organization } from '../types/auth.js';
 
-const orgCache = new LRUCache<string, Organization>(1000);
+const orgCacheTtlMs = ms(env.ORG_CACHE_TTL as StringValue);
+
+if (typeof orgCacheTtlMs !== 'number') {
+
+  throw new Error(`Invalid ORG_CACHE_TTL format: ${env.ORG_CACHE_TTL}`);
+}
+
+const orgCache = new LRUCache<string, Organization>(env.ORG_CACHE_MAX_SIZE, orgCacheTtlMs);
 
 /**
  * Drop a subdomain from the in-memory org cache. Call after mutating

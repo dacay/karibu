@@ -16,6 +16,13 @@ const envSchema = z.object({
     .transform((val) => val.split(',').map((origin) => origin.trim()))
     .pipe(z.array(z.string().url())),
 
+  // Organization cache (subdomain -> org row, consulted on every request).
+  // TTL bounds how long a stale org survives if a mutation forgets to call
+  // invalidateOrgCache, or if the invalidation happens on another replica.
+  // Accepts an ms duration string (e.g. '15m'); '0' disables caching.
+  ORG_CACHE_MAX_SIZE: z.string().default('1000').transform(Number),
+  ORG_CACHE_TTL: z.string().default('15m'),
+
   // JWT Configuration
   JWT_SECRET: z.string().min(32),
   JWT_AUDIENCE: z.string().url().default('https://test.karibu.ai'),
