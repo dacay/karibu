@@ -37,8 +37,10 @@ export const organizations = pgTable('organizations', {
   learnerTerm: text('learner_term').notNull().default('user'),
   learnerTermPlural: text('learner_term_plural').notNull().default('users'),
   expirationIntervalHours: integer('expiration_interval_hours').notNull().default(8),
-  // Default avatar for learners who haven't chosen their own — stored as plain uuid (no FK) to avoid circular reference
-  defaultAvatarId: uuid('default_avatar_id'),
+  // Default avatar for every conversation (ML + AMA) when the learner has no
+  // preference of their own — stored as plain uuid (no FK) to avoid circular
+  // reference with the avatars table. Always set (backfilled + set on org creation).
+  defaultAvatarId: uuid('default_avatar_id').notNull(),
   logoUpdatedAt: timestamp('logo_updated_at'),
   ...timestamps,
 });
@@ -140,7 +142,6 @@ export const microlearnings = pgTable('microlearnings', {
   topicIds: jsonb('topic_ids').$type<string[]>(),
   subtopicIds: jsonb('subtopic_ids').$type<string[]>(),
   patternId: uuid('pattern_id').references(() => conversationPatterns.id, { onDelete: 'set null' }),
-  avatarId: uuid('avatar_id').references(() => avatars.id, { onDelete: 'set null' }),
   sequenceId: uuid('sequence_id').references(() => microlearningSequences.id, { onDelete: 'set null' }),
   position: integer('position'),
   imageS3Key: text('image_s3_key'),

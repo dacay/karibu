@@ -165,7 +165,7 @@ export function OrganizationSection() {
   const [learnerTerm, setLearnerTerm] = useState("user");
   const [learnerTermPlural, setLearnerTermPlural] = useState("users");
   const [expirationIntervalHours, setExpirationIntervalHours] = useState(8);
-  const [defaultAvatarId, setDefaultAvatarId] = useState<string | null>(null);
+  const [defaultAvatarId, setDefaultAvatarId] = useState<string>("");
   const [identitySaveStatus, setIdentitySaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [sessionSaveStatus, setSessionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [avatarSaveStatus, setAvatarSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -212,7 +212,7 @@ export function OrganizationSection() {
   });
 
   const avatarMutation = useMutation({
-    mutationFn: (body: { defaultAvatarId: string | null }) =>
+    mutationFn: (body: { defaultAvatarId: string }) =>
       api.org.updateConfig(body),
     onMutate: () => setAvatarSaveStatus("saving"),
     onSuccess: (updated) => {
@@ -227,6 +227,7 @@ export function OrganizationSection() {
   });
 
   function handleAvatarSave() {
+    if (!defaultAvatarId) return;
     avatarMutation.mutate({ defaultAvatarId });
   }
 
@@ -253,7 +254,7 @@ export function OrganizationSection() {
     expirationIntervalHours !== (config?.expirationIntervalHours ?? 8);
 
   const isAvatarDirty =
-    defaultAvatarId !== (config?.defaultAvatarId ?? null);
+    defaultAvatarId !== (config?.defaultAvatarId ?? "");
 
   const allAvatars = avatarsData?.avatars ?? [];
 
@@ -441,15 +442,15 @@ export function OrganizationSection() {
             </CardContent>
           </Card>
 
-          {/* Default assistant avatar */}
+          {/* Default avatar */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <UserCircle className="size-4" />
-                Default assistant
+                Default avatar
               </CardTitle>
               <CardDescription>
-                The default avatar used in the assistant chat. Learners can override this with their own preference.
+                The default avatar for every conversation — microlearnings and the assistant chat. Learners can override it with their own preference.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -457,17 +458,16 @@ export function OrganizationSection() {
                 <Label htmlFor="default-avatar">Avatar</Label>
                 <select
                   id="default-avatar"
-                  value={defaultAvatarId ?? ""}
-                  onChange={(e) => setDefaultAvatarId(e.target.value || null)}
+                  value={defaultAvatarId}
+                  onChange={(e) => setDefaultAvatarId(e.target.value)}
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  <option value="">None (use microlearning avatar)</option>
                   {allAvatars.map((a) => (
                     <option key={a.id} value={a.id}>{a.name}{a.isBuiltIn ? " (built-in)" : ""}</option>
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Applies only to the assistant chat. Learners who have not chosen their own avatar will see this one.
+                  Used in all conversations. Learners who have not chosen their own avatar will see this one.
                 </p>
               </div>
 

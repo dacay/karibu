@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq } from 'drizzle-orm';
-import { organizations, users, authTokens } from '../db/schema.js';
+import { and, eq, isNull } from 'drizzle-orm';
+import { organizations, users, authTokens, avatars } from '../db/schema.js';
 import { hashPassword } from '../utils/crypto.js';
-import { seedDefaults } from './seed.defaults.js';
+import { seedDefaults, seedBuiltInAvatars } from './seed.defaults.js';
+import { BUILT_IN_AVATARS } from '../config/built-in-avatars.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -21,6 +22,17 @@ const DEV_LEARNER_TOKEN = 'dev-learner-token';
 async function seed() {
   console.log('Seeding development data...');
 
+  // Built-in avatars must exist before creating the org (default_avatar_id is required).
+  await seedBuiltInAvatars(db);
+
+  const fallbackName = BUILT_IN_AVATARS[0].name;
+  const [fallbackAvatar] = await db
+    .select({ id: avatars.id })
+    .from(avatars)
+    .where(and(eq(avatars.name, fallbackName), isNull(avatars.organizationId)))
+    .limit(1);
+  if (!fallbackAvatar) throw new Error(`Built-in avatar "${fallbackName}" not seeded.`);
+
   // Create organization or get existing
   const [existingOrg] = await db
     .select()
@@ -30,7 +42,7 @@ async function seed() {
 
   const org = existingOrg ?? (await db
     .insert(organizations)
-    .values({ name: 'Karibu Demo', subdomain: 'demo' })
+    .values({ name: 'Karibu Demo', subdomain: 'demo', defaultAvatarId: fallbackAvatar.id })
     .returning()
     .then(([r]) => r));
 

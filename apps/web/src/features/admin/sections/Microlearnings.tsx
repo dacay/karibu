@@ -18,7 +18,6 @@ import {
   Tag,
   Hash,
   MessageSquare,
-  UserRound,
   FlaskConical,
   ImageIcon,
   Sparkles,
@@ -59,7 +58,6 @@ import {
   type MicrolearningSequence,
   type DnaTopic,
   type ConversationPattern,
-  type Avatar,
   type UserGroup,
   type SequenceAssignment,
 } from "@/lib/api";
@@ -83,15 +81,13 @@ interface MetaParts {
   topics: string[];
   subtopics: string[];
   pattern: string;
-  avatar: string;
 }
 
-function metaParts(ml: Microlearning, topics: DnaTopic[], patterns: ConversationPattern[], avatars: Avatar[]): MetaParts {
+function metaParts(ml: Microlearning, topics: DnaTopic[], patterns: ConversationPattern[]): MetaParts {
   return {
     topics: topicNames(ml.topicIds, topics),
     subtopics: subtopicNames(ml.subtopicIds, topics),
     pattern: ml.patternId ? (patterns.find((x) => x.id === ml.patternId)?.name ?? "") : "",
-    avatar: ml.avatarId ? (avatars.find((x) => x.id === ml.avatarId)?.name ?? "") : "",
   };
 }
 
@@ -231,7 +227,6 @@ interface MlFormValues {
   topicIds: string[];
   subtopicIds: string[];
   patternId: string;
-  avatarId: string;
   confettiEnabled: boolean;
 }
 
@@ -239,7 +234,6 @@ function MlForm({
   initial = {},
   topics,
   patterns,
-  avatars,
   onSave,
   onCancel,
   isLoading,
@@ -248,7 +242,6 @@ function MlForm({
   initial?: Partial<MlFormValues>;
   topics: DnaTopic[];
   patterns: ConversationPattern[];
-  avatars: Avatar[];
   onSave: (v: MlFormValues) => void;
   onCancel: () => void;
   isLoading: boolean;
@@ -258,7 +251,6 @@ function MlForm({
   const [topicIds, setTopicIds] = useState<string[]>(initial.topicIds ?? []);
   const [subtopicIds, setSubtopicIds] = useState<string[]>(initial.subtopicIds ?? []);
   const [patternId, setPatternId] = useState(initial.patternId ?? "");
-  const [avatarId, setAvatarId] = useState(initial.avatarId ?? "");
   const [confettiEnabled, setConfettiEnabled] = useState(initial.confettiEnabled ?? false);
 
   const subtopicHasApproved = (s: { values: { approval: string }[] }) =>
@@ -318,7 +310,7 @@ function MlForm({
   );
   const hasValidSubtopicSelection = unsatisfiedTopicIds.size === 0;
   const canSubmit =
-    title.trim() && topicIds.length > 0 && hasValidSubtopicSelection && patternId && avatarId;
+    title.trim() && topicIds.length > 0 && hasValidSubtopicSelection && patternId;
 
   return (
     <div className="flex flex-col gap-3 p-4 border rounded-lg bg-muted/30">
@@ -415,13 +407,6 @@ function MlForm({
         </NativeSelect>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-muted-foreground">Avatar <span className="text-destructive">*</span></label>
-        <NativeSelect value={avatarId} onChange={setAvatarId} placeholder="Select avatar">
-          {avatars.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </NativeSelect>
-      </div>
-
       <label className="flex items-center gap-2 cursor-pointer select-none">
         <input
           type="checkbox"
@@ -433,7 +418,7 @@ function MlForm({
       </label>
 
       <div className="flex gap-2">
-        <Button size="sm" disabled={!canSubmit || isLoading} onClick={() => { if (!canSubmit) return; onSave({ title, topicIds, subtopicIds, patternId, avatarId, confettiEnabled }); }}>
+        <Button size="sm" disabled={!canSubmit || isLoading} onClick={() => { if (!canSubmit) return; onSave({ title, topicIds, subtopicIds, patternId, confettiEnabled }); }}>
           {isLoading ? <Spinner className="size-3 mr-1" /> : null}
           {submitLabel}
         </Button>
@@ -494,7 +479,6 @@ interface MlRowProps {
   isPending: boolean;
   topics: DnaTopic[];
   patterns: ConversationPattern[];
-  avatars: Avatar[];
   sequences: MicrolearningSequence[];
   editingMlId: string | null;
   onDragStart: (mlId: string, fromGroup: string) => void;
@@ -524,7 +508,6 @@ function MlRow({
   isPending,
   topics,
   patterns,
-  avatars,
   sequences,
   editingMlId,
   onDragStart,
@@ -545,7 +528,7 @@ function MlRow({
   isRegeneratingImage,
 }: MlRowProps) {
   const isEditing = editingMlId === ml.id;
-  const meta = metaParts(ml, topics, patterns, avatars);
+  const meta = metaParts(ml, topics, patterns);
   const imageSrc = ml.imageS3Key ? getVersionedAssetUrl(ml.imageS3Key, ml.updatedAt) : null;
 
   if (isEditing) {
@@ -556,12 +539,10 @@ function MlRow({
           topicIds: ml.topicIds ?? [],
           subtopicIds: ml.subtopicIds ?? [],
           patternId: ml.patternId ?? "",
-          avatarId: ml.avatarId ?? "",
           confettiEnabled: ml.confettiEnabled,
         }}
         topics={topics}
         patterns={patterns}
-        avatars={avatars}
         onSave={onSaveEdit}
         onCancel={onCancelEdit}
         isLoading={isSavingEdit}
@@ -576,11 +557,10 @@ function MlRow({
   // Detect per-category loading: id is set but label resolved to empty = data not yet loaded
   const topicsLoading = !!(ml.topicIds?.length) && topicList.length === 0;
   const patternLoading = !!ml.patternId && !meta.pattern;
-  const avatarLoading = !!ml.avatarId && !meta.avatar;
   const subtopicsLoading = !!(ml.subtopicIds?.length) && subtopicList.length === 0;
 
-  const hasAnything = topicList.length > 0 || meta.pattern || meta.avatar || subtopicList.length > 0
-    || topicsLoading || patternLoading || avatarLoading || subtopicsLoading;
+  const hasAnything = topicList.length > 0 || meta.pattern || subtopicList.length > 0
+    || topicsLoading || patternLoading || subtopicsLoading;
 
   return (
     <div
@@ -680,15 +660,6 @@ function MlRow({
               <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-blue-500/10 text-blue-500 dark:text-blue-400">
                 <MessageSquare className="size-2.5 shrink-0" />
                 {meta.pattern}
-              </span>
-            )}
-            {/* Avatar */}
-            {avatarLoading ? (
-              <span className="inline-flex h-4 w-14 rounded bg-violet-500/10 animate-pulse" />
-            ) : meta.avatar && (
-              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-500/10 text-violet-500 dark:text-violet-400">
-                <UserRound className="size-2.5 shrink-0" />
-                {meta.avatar}
               </span>
             )}
           </div>
@@ -855,13 +826,11 @@ export function MicrolearningsSection() {
   const seqQuery = useQuery({ queryKey: ["ml-sequences"], queryFn: () => api.sequences.list() });
   const dnaQuery = useQuery({ queryKey: ["dna"], queryFn: () => api.dna.list() });
   const patternsQuery = useQuery({ queryKey: ["patterns"], queryFn: () => api.patterns.list() });
-  const avatarsQuery = useQuery({ queryKey: ["avatars"], queryFn: () => api.avatars.list() });
 
   const mls = mlQuery.data?.microlearnings ?? [];
   const sequences = seqQuery.data?.sequences ?? [];
   const topics = dnaQuery.data?.topics ?? [];
   const patterns = patternsQuery.data?.patterns ?? [];
-  const avatars = avatarsQuery.data?.avatars ?? [];
   const isLoading = mlQuery.isLoading || seqQuery.isLoading;
 
   const unassigned = mls.filter((m) => !m.sequenceId);
@@ -880,7 +849,6 @@ export function MicrolearningsSection() {
         topicIds: v.topicIds,
         subtopicIds: v.subtopicIds,
         patternId: v.patternId || null,
-        avatarId: v.avatarId || null,
         sequenceId: null,
         confettiEnabled: v.confettiEnabled,
       }),
@@ -900,7 +868,6 @@ export function MicrolearningsSection() {
         topicIds: v.topicIds,
         subtopicIds: v.subtopicIds,
         patternId: v.patternId || null,
-        avatarId: v.avatarId || null,
         confettiEnabled: v.confettiEnabled,
       }),
     onSuccess: () => { invalidate(); setEditingMlId(null); },
@@ -1219,7 +1186,6 @@ export function MicrolearningsSection() {
                           isPending={pendingMlId === ml.id}
                           topics={topics}
                           patterns={patterns}
-                          avatars={avatars}
                           sequences={sequences}
                           editingMlId={editingMlId}
                           onDragStart={handleDragStart}
@@ -1324,7 +1290,6 @@ export function MicrolearningsSection() {
                     isPending={pendingMlId === ml.id}
                     topics={topics}
                     patterns={patterns}
-                    avatars={avatars}
                     sequences={sequences}
                     editingMlId={editingMlId}
                     onDragStart={handleDragStart}
@@ -1370,7 +1335,6 @@ export function MicrolearningsSection() {
                 <MlForm
                   topics={topics}
                   patterns={patterns}
-                  avatars={avatars}
                   onSave={(v) => createMlMutation.mutate(v)}
                   onCancel={() => setCreatingMl(false)}
                   isLoading={createMlMutation.isPending}

@@ -38,6 +38,7 @@ import {
   type AvatarLocalization,
 } from '../db/schema.js';
 import { logger } from '../config/logger.js';
+import { BUILT_IN_AVATARS } from '../config/built-in-avatars.js';
 import { env } from '../config/env.js';
 import { notifyMlCompletion } from '../services/completion-webhook.js';
 import { isMicrolearningComplete } from '../services/completion-classifier.js';
@@ -71,6 +72,51 @@ function resolveLocalization(
 ): AvatarLocalization | null {
   if (!localizations) return null;
   return localizations[language] ?? localizations.en ?? null;
+}
+
+/**
+ * Resolve the persona that drives a chat session, applying the precedence:
+ * learner's preferred avatar (pass null for admins so the org default wins) →
+ * org default avatar → BUILT_IN_AVATARS[0] (in-code fallback, no query).
+ * Returns the persona text for the given language (falling back to English).
+ * Voice + photo are resolved separately on the frontend from the same order.
+ */
+async function resolveSessionAvatar(
+  organizationId: string,
+  preferredAvatarId: string | null,
+  language: LanguageCode,
+): Promise<{ name: string; description: string }> {
+  // Org default id (always set post-backfill, but may reference a deleted
+  // avatar since there is no FK).
+  const [org] = await db
+    .select({ defaultAvatarId: organizations.defaultAvatarId })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  const defaultId = org?.defaultAvatarId ?? null;
+
+  const candidateIds = [preferredAvatarId, defaultId].filter((id): id is string => Boolean(id));
+  if (candidateIds.length > 0) {
+    const rows = await db
+      .select({ id: avatars.id, name: avatars.name, localizations: avatars.localizations })
+      .from(avatars)
+      .where(and(
+        inArray(avatars.id, candidateIds),
+        or(isNull(avatars.organizationId), eq(avatars.organizationId, organizationId)),
+      ));
+    const chosen =
+      rows.find((a) => a.id === preferredAvatarId) ??
+      rows.find((a) => a.id === defaultId);
+    if (chosen) {
+      const localization = resolveLocalization(chosen.localizations, language);
+      if (localization) return { name: chosen.name, description: localization.description };
+    }
+  }
+
+  // In-code fallback — no query.
+  const fallback = BUILT_IN_AVATARS[0];
+  const loc = fallback.localizations[language] ?? fallback.localizations.en;
+  return { name: fallback.name, description: loc.description };
 }
 
 /** Explicit, always-on instruction telling the model which language to speak. */
@@ -382,32 +428,14 @@ chat.post('/ml', zValidator('json', mlChatSchema), async (c) => {
   // can flip it within the same request and the metadata reflects the change.
   let language = resolveLanguage(learner?.language);
 
-  // Resolve the avatar whose persona drives the session. This mirrors the
-  // frontend's voice precedence so the persona matches the voice the learner
-  // hears: learners use their preferred avatar when set, otherwise the ML's
-  // own avatar; admins always use the ML's avatar. The persona text is the
-  // avatar's localization for the active language (falling back to English).
-  let persona: { name: string; description: string } | null = null;
-  const preferredAvatarId = auth.role !== 'admin' ? learner?.preferredAvatarId ?? null : null;
-  const avatarCandidateIds = [preferredAvatarId, ml.avatarId].filter((id): id is string => Boolean(id));
-  if (avatarCandidateIds.length > 0) {
-    const avatarRows = await db
-      .select({ id: avatars.id, name: avatars.name, localizations: avatars.localizations })
-      .from(avatars)
-      .where(and(
-        inArray(avatars.id, avatarCandidateIds),
-        or(isNull(avatars.organizationId), eq(avatars.organizationId, auth.organizationId)),
-      ));
-    const chosen =
-      avatarRows.find((a) => a.id === preferredAvatarId) ??
-      avatarRows.find((a) => a.id === ml.avatarId);
-    if (chosen) {
-      const localization = resolveLocalization(chosen.localizations, language);
-      if (localization) {
-        persona = { name: chosen.name, description: localization.description };
-      }
-    }
-  }
+  // Resolve the avatar persona for this session (learner preference → org
+  // default → built-in fallback). Admins have no learner preference. The
+  // persona text is the avatar's localization for the active language.
+  const persona = await resolveSessionAvatar(
+    auth.organizationId,
+    auth.role !== 'admin' ? learner?.preferredAvatarId ?? null : null,
+    language,
+  );
 
   // Load conversation pattern
   let patternPrompt = DEFAULT_ML_SYSTEM_PROMPT;
@@ -720,7 +748,7 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
       .where(eq(organizations.id, auth.organizationId))
       .limit(1),
     db
-      .select({ firstName: users.firstName, lastName: users.lastName, language: users.language })
+      .select({ firstName: users.firstName, lastName: users.lastName, language: users.language, preferredAvatarId: users.preferredAvatarId })
       .from(users)
       .where(eq(users.id, auth.userId))
       .limit(1),
@@ -735,6 +763,16 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
     assistantLanguage = next;
     assistantLanguageChanged = next;
   });
+
+  // Persona layered onto the assistant's tone (voice + photo come from the
+  // frontend). Same precedence as ML chat: learner preference → org default →
+  // built-in fallback. It shapes tone only and must not override grounding.
+  const assistantPersona = await resolveSessionAvatar(
+    auth.organizationId,
+    auth.role !== 'admin' ? assistantLearner?.preferredAvatarId ?? null : null,
+    assistantLanguage,
+  );
+  const assistantPersonaLine = `\n\nYOUR PERSONA: You are ${assistantPersona.name}. Embody this character's tone, warmth, and word choice: ${assistantPersona.description}\nThis shapes only your tone — it must never override the knowledge-search rules, the reportSource requirement, or factual grounding above.`;
 
   const learnerLine = assistantLearnerName
     ? `\n\nLEARNER: ${assistantLearnerName}\nAddress the learner by their first name when it feels natural.`
@@ -763,6 +801,7 @@ You MUST call reportSource before writing your response, describing what your re
 - "conversational" if your response does not convey factual information from a knowledge source — e.g. greetings, thanks, small talk, acknowledgments, clarifying questions back to the user, or describing your own capabilities and how you can help
 
 If the learner asks to switch to a language you support, call setLanguage with that language and then continue in it. If they ask for a language you don't support, tell them it isn't available and keep going in the current language.
+${assistantPersonaLine}
 ${languageDirective(assistantLanguage)}
 ${HIPAA_GUARDRAIL}`;
 

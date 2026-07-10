@@ -226,6 +226,19 @@ Each microlearning gets an AI-generated cover image used as a full-bleed card ba
 - The `imageS3Key` column on `microlearnings` is nullable; the learner/admin UIs fall back to a gradient placeholder when it is unset.
 - Because generation is async, an ML may already be visible to learners before its image is ready. The learner feed should be refreshed (e.g. via the existing SSE `feed:updated` event) once `imageS3Key` is written if live update is desired.
 
+## Avatar Resolution
+
+Every conversation — microlearning chat and the free-form assistant (AMA) — resolves a single avatar that drives the persona (system-prompt tone, backend), plus the voice and photo (frontend). There is no per-microlearning avatar; `microlearnings.avatar_id` was removed.
+
+Precedence (see `resolveSessionAvatar` in `src/routes/chat.ts`):
+1. The learner's `users.preferred_avatar_id` (learners only; admins skip this).
+2. The org's `organizations.default_avatar_id` — **required** (NOT NULL), so it is always set.
+3. In-code fallback `BUILT_IN_AVATARS[0]` (Amara), used only if the resolved id has no matching row (there is no FK, so a deleted avatar can leave a dangling id). This fallback is a plain constant — no query.
+
+`BUILT_IN_AVATARS` lives in `src/config/built-in-avatars.ts` (imported by both `seed.defaults.ts` and the chat routes). The org default is set on org creation (`create-org.ts`, `seed.dev.ts`).
+
+One-off backfill for pre-existing orgs: `pnpm backfill-org-default-avatar` sets any null `default_avatar_id` to the fallback avatar. Run it **before** `pnpm db:push` applies the NOT NULL constraint (against the live DB the column is still nullable, so the update can match legacy rows).
+
 ## Message Flagging
 
 ### Data Model

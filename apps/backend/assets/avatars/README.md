@@ -2,8 +2,10 @@
 
 These images are uploaded to the assets bucket (CDN-fronted) and attached to the
 built-in avatars seeded by `src/scripts/seed.defaults.ts` (`seedBuiltInAvatars`).
+The avatar definitions themselves live in `src/config/built-in-avatars.ts`
+(`BUILT_IN_AVATARS`), shared between the seed script and the chat routes.
 
-Each avatar's `imageFile` in that script points to one of the files below. Drop the
+Each avatar's `imageFile` in `BUILT_IN_AVATARS` points to one of the files below. Drop the
 corresponding photo here using the exact filename, then run the seed:
 
 ```bash

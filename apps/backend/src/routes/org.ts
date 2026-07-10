@@ -44,7 +44,7 @@ const updateConfigSchema = z.object({
   learnerTerm: z.string().min(1).max(50).optional(),
   learnerTermPlural: z.string().min(1).max(50).optional(),
   expirationIntervalHours: z.number().int().min(1).max(720).optional(),
-  defaultAvatarId: z.string().uuid().nullable().optional(),
+  defaultAvatarId: z.string().uuid().optional(),
 });
 
 /**
@@ -120,25 +120,23 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
     }
 
     if (body.defaultAvatarId !== undefined) {
-      if (body.defaultAvatarId) {
-        // Validate the avatar belongs to this org or is built-in
-        const [avatar] = await db
-          .select({ id: avatars.id })
-          .from(avatars)
-          .where(
-            and(
-              eq(avatars.id, body.defaultAvatarId),
-              or(
-                isNull(avatars.organizationId),
-                eq(avatars.organizationId, organization.id),
-              )
+      // Validate the avatar belongs to this org or is built-in.
+      const [avatar] = await db
+        .select({ id: avatars.id })
+        .from(avatars)
+        .where(
+          and(
+            eq(avatars.id, body.defaultAvatarId),
+            or(
+              isNull(avatars.organizationId),
+              eq(avatars.organizationId, organization.id),
             )
           )
-          .limit(1);
+        )
+        .limit(1);
 
-        if (!avatar) {
-          return c.json({ error: 'Avatar not found.' }, 404);
-        }
+      if (!avatar) {
+        return c.json({ error: 'Avatar not found.' }, 404);
       }
       updates.defaultAvatarId = body.defaultAvatarId;
     }

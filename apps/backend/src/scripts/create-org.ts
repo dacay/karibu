@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { organizations, users } from '../db/schema.js';
+import { and, eq, isNull } from 'drizzle-orm';
+import { organizations, users, avatars } from '../db/schema.js';
+import { BUILT_IN_AVATARS } from '../config/built-in-avatars.js';
 import { hashPassword } from '../utils/crypto.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -42,10 +44,24 @@ async function createOrg() {
   const client = postgres(DATABASE_URL!);
   const db = drizzle(client);
 
+  // Resolve the fallback built-in avatar (default_avatar_id is required).
+  const fallbackName = BUILT_IN_AVATARS[0].name;
+  const [fallbackAvatar] = await db
+    .select({ id: avatars.id })
+    .from(avatars)
+    .where(and(eq(avatars.name, fallbackName), isNull(avatars.organizationId)))
+    .limit(1);
+
+  if (!fallbackAvatar) {
+    console.error(`Built-in avatar "${fallbackName}" not found. Run "pnpm db:seed:defaults" first.`);
+    await client.end();
+    process.exit(1);
+  }
+
   // Create organization
   const [org] = await db
     .insert(organizations)
-    .values({ name, subdomain })
+    .values({ name, subdomain, defaultAvatarId: fallbackAvatar.id })
     .returning();
 
   console.log(`Organization created: ${org.name} (subdomain: ${org.subdomain}, id: ${org.id})`);

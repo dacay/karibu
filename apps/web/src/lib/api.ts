@@ -255,7 +255,6 @@ export interface Microlearning {
   topicIds: string[] | null;
   subtopicIds: string[] | null;
   patternId: string | null;
-  avatarId: string | null;
   sequenceId: string | null;
   position: number | null;
   imageS3Key: string | null;
@@ -275,7 +274,6 @@ export interface MicrolearningProgress {
 }
 
 export interface MicrolearningWithDetails extends Microlearning {
-  avatar: Avatar | null;
   topics: { id: string; name: string }[];
   progress: MicrolearningProgress | null;
 }
@@ -306,7 +304,7 @@ export interface UserProfile {
   language: LanguageCode;
   fontSize: FontSize;
   onboardingCompletedAt: string | null;
-  defaultAvatarId: string | null;
+  defaultAvatarId: string;
 }
 
 export interface UserGroup {
@@ -372,7 +370,7 @@ export interface OrgConfig {
   learnerTerm: string;
   learnerTermPlural: string;
   expirationIntervalHours: number;
-  defaultAvatarId: string | null;
+  defaultAvatarId: string;
   logoUpdatedAt: string | null;
 }
 
@@ -604,7 +602,6 @@ export const api = {
       topicIds?: string[];
       subtopicIds?: string[];
       patternId?: string | null;
-      avatarId?: string | null;
       sequenceId?: string | null;
       position?: number | null;
       confettiEnabled?: boolean;
@@ -619,7 +616,6 @@ export const api = {
       topicIds?: string[];
       subtopicIds?: string[];
       patternId?: string | null;
-      avatarId?: string | null;
       sequenceId?: string | null;
       position?: number | null;
       confettiEnabled?: boolean;
@@ -744,7 +740,7 @@ export const api = {
   org: {
     getPublic: () => request<{ logoUpdatedAt: string | null }>("/org/public"),
     getConfig: () => request<OrgConfig>("/org/config"),
-    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string | null }) =>
+    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string }) =>
       request<OrgConfig>("/org/config", {
         method: "PATCH",
         body: JSON.stringify(body),

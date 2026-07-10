@@ -89,18 +89,18 @@ export default function MicrolearningChatPage() {
   const chatId = isAdminTest ? adminTestChatId : (chatIdRef.current ?? crypto.randomUUID());
   const initialMessages: UIMessage[] = isAdminTest ? [] : initialMessagesRef.current;
 
-  // Load user profile (for preferred avatar — only for non-admin users)
+  // Load user profile (for preferred avatar + org default avatar)
   const { data: profileData } = useQuery({
     queryKey: ["user", "me"],
     queryFn: api.user.me,
-    enabled: !!user && user.role !== "admin",
+    enabled: !!user,
   });
 
-  // Load available avatars (for preference selector — only for learners)
+  // Load available avatars to resolve the chosen avatar's voice + photo
   const { data: avatarsData } = useQuery({
     queryKey: ["avatars"],
     queryFn: api.avatars.list,
-    enabled: !!user && user.role !== "admin",
+    enabled: !!user,
   });
 
   // Sync completed state from existing progress
@@ -117,28 +117,21 @@ export default function MicrolearningChatPage() {
     }
   }, [user, authLoading, router]);
 
-  // Determine effective avatar:
-  // - Admin: always use ML's default avatar
-  // - User: use their preferred avatar if set, otherwise use ML's default
+  // Determine the effective avatar (voice + photo). Precedence mirrors the
+  // backend persona resolver: a learner's preferred avatar overrides, otherwise
+  // the org default. Admins have no learner preference, so they get the org
+  // default. The org default is always set, so an avatar is always resolved.
   const language = profileData?.user.language ?? "en";
 
   const effectiveAvatar = useMemo((): ChatAvatar | undefined => {
-    const ml = mlData?.microlearning;
-    if (!ml) return undefined;
+    if (!avatarsData?.avatars) return undefined;
+    const byId = (id: string | null | undefined) =>
+      id ? avatarsData.avatars.find((a) => a.id === id) ?? null : null;
 
-    if (user?.role === "admin") {
-      return buildChatAvatar(ml.avatar, language);
-    }
-
-    // Learner: preferred avatar overrides, otherwise use the ML's own avatar
-    const preferredAvatarId = profileData?.user.preferredAvatarId;
-    if (preferredAvatarId && avatarsData?.avatars) {
-      const preferredAvatar = avatarsData.avatars.find((a) => a.id === preferredAvatarId);
-      if (preferredAvatar) return buildChatAvatar(preferredAvatar, language);
-    }
-
-    return buildChatAvatar(ml.avatar, language);
-  }, [mlData, profileData, avatarsData, user?.role, language]);
+    const preferred = user?.role !== "admin" ? byId(profileData?.user.preferredAvatarId) : null;
+    const chosen = preferred ?? byId(profileData?.user.defaultAvatarId);
+    return buildChatAvatar(chosen, language);
+  }, [profileData, avatarsData, user?.role, language]);
 
   // Restart the admin test session with a fresh chat ID and no prior messages
   const handleRestart = useCallback(() => {

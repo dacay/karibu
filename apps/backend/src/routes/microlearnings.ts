@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, asc, inArray, or, isNull } from 'drizzle-orm';
+import { eq, and, asc, inArray, isNull } from 'drizzle-orm';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 import type { UserAuthContext } from '../types/auth.js';
 import { db } from '../db/index.js';
@@ -10,7 +10,6 @@ import {
   microlearningProgress,
   userGroups,
   userGroupMembers,
-  avatars,
   dnaTopics,
   organizations,
 } from '../db/schema.js';
@@ -97,15 +96,8 @@ microlearningsRouter.get('/my', async (c) => {
       inArray(microlearningProgress.microlearningId, mlIds),
     ));
 
-  // Fetch avatars for the MLs
-  const avatarIds = [...new Set(mls.map((ml) => ml.avatarId).filter(Boolean))] as string[];
-  const avatarRows = avatarIds.length > 0
-    ? await db.select().from(avatars).where(inArray(avatars.id, avatarIds))
-    : [];
-
   const result = mls.map((ml) => ({
     ...ml,
-    avatar: avatarRows.find((a) => a.id === ml.avatarId) ?? null,
     progress: progressRows.find((p) => p.microlearningId === ml.id) ?? null,
   }));
 
@@ -227,15 +219,11 @@ microlearningsRouter.get('/feed', async (c) => {
     }
   }
 
-  // ── 6. Fetch supporting data (avatars, topics, sequence names) ─────────────
+  // ── 6. Fetch supporting data (topics, sequence names) ─────────────────────
 
-  const avatarIds = [...new Set(allMLs.map((m) => m.avatarId).filter(Boolean))] as string[];
   const topicIds = [...new Set(allMLs.flatMap((m) => m.topicIds ?? []))];
 
-  const [avatarRows, topicRows, seqNameRows] = await Promise.all([
-    avatarIds.length > 0
-      ? db.select().from(avatars).where(inArray(avatars.id, avatarIds))
-      : Promise.resolve([]),
+  const [topicRows, seqNameRows] = await Promise.all([
     topicIds.length > 0
       ? db.select({ id: dnaTopics.id, name: dnaTopics.name })
           .from(dnaTopics)
@@ -253,7 +241,6 @@ microlearningsRouter.get('/feed', async (c) => {
   // Helper to assemble a full ML detail object
   const buildItem = (ml: typeof allMLs[0], sequenceName: string | null) => ({
     ...ml,
-    avatar: avatarRows.find((a) => a.id === ml.avatarId) ?? null,
     topics: topicRows.filter((t) => (ml.topicIds ?? []).includes(t.id)),
     progress: progressMap.get(ml.id) ?? null,
     sequenceName,
@@ -374,18 +361,6 @@ microlearningsRouter.get('/:id', async (c) => {
     }
   }
 
-  // Fetch associated avatar
-  const [avatar] = ml.avatarId
-    ? await db
-      .select()
-      .from(avatars)
-      .where(and(
-        eq(avatars.id, ml.avatarId),
-        or(isNull(avatars.organizationId), eq(avatars.organizationId, auth.organizationId)),
-      ))
-      .limit(1)
-    : [null];
-
   // Fetch topic names
   const mlTopicIds = ml.topicIds ?? [];
   const topicRows = mlTopicIds.length > 0
@@ -419,7 +394,6 @@ microlearningsRouter.get('/:id', async (c) => {
   return c.json({
     microlearning: {
       ...ml,
-      avatar: avatar ?? null,
       topics: topicRows,
     },
     progress: progress ?? null,
@@ -458,7 +432,6 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
     topicIds: string[];
     subtopicIds?: string[];
     patternId: string;
-    avatarId: string;
     sequenceId?: string | null;
     position?: number | null;
     confettiEnabled?: boolean;
@@ -473,9 +446,6 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
   if (!body.patternId) {
     return c.json({ error: 'Pattern is required.' }, 400);
   }
-  if (!body.avatarId) {
-    return c.json({ error: 'Avatar is required.' }, 400);
-  }
 
   const [ml] = await db
     .insert(microlearnings)
@@ -486,7 +456,6 @@ microlearningsRouter.post('/', requireRole('admin'), async (c) => {
       topicIds: body.topicIds,
       subtopicIds: body.subtopicIds ?? [],
       patternId: body.patternId ?? null,
-      avatarId: body.avatarId ?? null,
       sequenceId: body.sequenceId ?? null,
       position: body.position ?? null,
       confettiEnabled: body.confettiEnabled ?? false,
@@ -517,7 +486,6 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
     topicIds?: string[];
     subtopicIds?: string[];
     patternId?: string | null;
-    avatarId?: string | null;
     sequenceId?: string | null;
     position?: number | null;
     confettiEnabled?: boolean;
@@ -539,7 +507,6 @@ microlearningsRouter.patch('/:id', requireRole('admin'), async (c) => {
   if ('topicIds' in body) updates.topicIds = body.topicIds ?? [];
   if ('subtopicIds' in body) updates.subtopicIds = body.subtopicIds ?? [];
   if ('patternId' in body) updates.patternId = body.patternId ?? null;
-  if ('avatarId' in body) updates.avatarId = body.avatarId ?? null;
   if ('sequenceId' in body) updates.sequenceId = body.sequenceId ?? null;
   if ('position' in body) updates.position = body.position ?? null;
   if ('confettiEnabled' in body) updates.confettiEnabled = body.confettiEnabled ?? false;

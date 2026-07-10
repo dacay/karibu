@@ -16,6 +16,12 @@ Admin sections use URL-based routing:
 
 Current admin-only sections: `dna`, `microlearnings`, `avatars`, `patterns`, `team`, `flagged`
 
+## Avatars
+
+The org's default avatar (set in the Organization section) applies to **all** conversations — microlearning chat and the assistant chat — for both voice/photo and persona. The microlearning form has no avatar field; MLs no longer carry their own avatar.
+
+The chat pages (`app/ml/[id]/page.tsx`, `app/chat/page.tsx`) resolve the effective avatar as: learner's preferred avatar → org default (`profileData.user.defaultAvatarId`, always set) → none. They look the avatar up in the `avatars` list to get its voice + photo; the backend independently resolves the same precedence for the persona text.
+
 ## DNA Auto-Discovery
 
 The "Auto-discover" button in the DNA section (`/dna`) calls `POST /dna/discover` to analyze uploaded documents and suggest topic/subtopic structures.
