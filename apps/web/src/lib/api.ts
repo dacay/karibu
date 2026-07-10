@@ -301,6 +301,7 @@ export interface UserProfile {
   phoneNumber: string | null;
   role: "admin" | "user";
   organizationId: string;
+  organizationName: string;
   preferredAvatarId: string | null;
   language: LanguageCode;
   fontSize: FontSize;

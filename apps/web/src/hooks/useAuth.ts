@@ -43,6 +43,23 @@ export function useAuth() {
     staleTime: Infinity,
   });
 
+  // The stored user is a snapshot taken at login, so server-owned fields drift
+  // once they change (e.g. an admin renames the organization). Reconcile them
+  // against /user/me, which reads the organization row live.
+  const { data: profile } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: api.user.me,
+    enabled: !!user,
+  });
+
+  useEffect(() => {
+    const organizationName = profile?.user.organizationName;
+    if (!user || !organizationName || organizationName === user.organizationName) return;
+    const next = { ...user, organizationName };
+    localStorage.setItem(USER_KEY, JSON.stringify(next));
+    queryClient.setQueryData(["auth", "user"], next);
+  }, [profile, user, queryClient]);
+
   const loginMutation = useMutation({
     mutationFn: api.auth.login,
     onSuccess: (data) => {

@@ -161,6 +161,8 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
         defaultAvatarId: organizations.defaultAvatarId,
       });
 
+    invalidateOrgCache(organization.subdomain);
+
     logger.debug({ organizationId: organization.id }, 'Org config updated.');
 
     return c.json(updated);
