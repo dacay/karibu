@@ -21,6 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api";
+import { AVATARS_ENABLED } from "@/lib/features";
 import { useLogo } from "@/hooks/useLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
@@ -54,7 +55,7 @@ import { FlaggedMessagesSection } from "./sections/FlaggedMessages";
 
 type SectionId = "dashboard" | "source" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
 
-const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
+const ALL_NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "source", label: "Source", icon: Layers },
   { id: "microlearnings", label: "Microlearnings", icon: BookOpen },
@@ -64,6 +65,8 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "flagged", label: "Flagged", icon: Flag },
 ];
+
+const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => AVATARS_ENABLED || item.id !== "avatars");
 
 function getInitials(firstName: string | null, lastName: string | null, email: string): string {
   if (firstName && lastName) {
@@ -225,7 +228,7 @@ export function AdminRoot() {
           )}
           {activeSection === "source" && <DNASection />}
           {activeSection === "microlearnings" && <MicrolearningsSection />}
-          {activeSection === "avatars" && <AvatarsSection />}
+          {activeSection === "avatars" && AVATARS_ENABLED && <AvatarsSection />}
           {activeSection === "patterns" && <PatternsSection />}
           {activeSection === "team" && <TeamSection />}
           {activeSection === "organization" && <OrganizationSection />}

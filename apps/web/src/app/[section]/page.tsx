@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AdminRoot } from "@/features/admin";
 import { LearnerRoot } from "@/features/learner";
 import { Spinner } from "@/components/ui/spinner";
+import { AVATARS_ENABLED } from "@/lib/features";
 
 const ADMIN_ONLY_SECTIONS = new Set(["source", "microlearnings", "avatars", "patterns", "team", "flagged"]);
 
@@ -18,6 +19,8 @@ export default function SectionPage() {
     if (isLoading) return;
     if (!user) {
       router.replace("/login");
+    } else if (!AVATARS_ENABLED && section === "avatars") {
+      router.replace("/");
     } else if (user.role === "user" && ADMIN_ONLY_SECTIONS.has(section)) {
       router.replace("/");
     }
