@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api, avatarSupportsLanguage, FONT_SIZES, LANGUAGES, type FontSize, type LanguageCode, type UserProfile } from "@/lib/api";
+import { api, avatarSupportsLanguage, getVoice, localizationFor, FONT_SIZES, LANGUAGES, type FontSize, type LanguageCode, type UserProfile } from "@/lib/api";
 import { applyFontSize } from "@/components/FontSizeSync";
 
 const APPEARANCE_OPTIONS: { value: string; label: string; icon: React.ElementType }[] = [
@@ -138,6 +138,22 @@ export function AccountMenu() {
     avatarSupportsLanguage(a, language),
   );
 
+  // "Use default" follows the org default — reveal which avatar that resolves to.
+  const orgDefaultAvatar = (avatarsData?.avatars ?? []).find(
+    (a) => a.id === profileData?.user.defaultAvatarId,
+  );
+  const defaultAvatarLabel = orgDefaultAvatar
+    ? `Use default (${orgDefaultAvatar.name})`
+    : "Use default";
+
+  // Voice accent for each avatar, in the learner's current language. Only surface
+  // it when it actually distinguishes avatars — e.g. all English voices are
+  // "American" (noise), whereas Spanish accents vary and help the learner choose.
+  const avatarAccents = new Map(
+    selectableAvatars.map((a) => [a.id, getVoice(localizationFor(a, language)?.voiceId)?.accent]),
+  );
+  const showAccents = new Set([...avatarAccents.values()].filter(Boolean)).size > 1;
+
   const initials = user?.email ? getInitials(user.firstName ?? null, user.lastName ?? null, user.email) : "?";
 
   return (
@@ -167,7 +183,12 @@ export function AccountMenu() {
           onValueChange={(val) => updateLanguageMutation.mutate(val as LanguageCode)}
         >
           {LANGUAGES.map(({ code, label }) => (
-            <DropdownMenuRadioItem key={code} value={code} className="cursor-pointer">
+            <DropdownMenuRadioItem
+              key={code}
+              value={code}
+              className="cursor-pointer"
+              onSelect={(e) => e.preventDefault()}
+            >
               {label}
             </DropdownMenuRadioItem>
           ))}
@@ -186,11 +207,16 @@ export function AccountMenu() {
               }
             >
               <DropdownMenuRadioItem value="default" className="cursor-pointer">
-                Use default
+                {defaultAvatarLabel}
               </DropdownMenuRadioItem>
               {selectableAvatars.map((a) => (
                 <DropdownMenuRadioItem key={a.id} value={a.id} className="cursor-pointer">
                   {a.name}
+                  {showAccents && avatarAccents.get(a.id) && (
+                    <span className="ml-1.5 text-xs text-muted-foreground">
+                      {avatarAccents.get(a.id)}
+                    </span>
+                  )}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
