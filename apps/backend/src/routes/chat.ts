@@ -292,6 +292,24 @@ If the user's message includes or implies any of the above about a real, identif
 - Respond with a brief redirect along the lines of: "Karibu can't accept or store patient information. For anything about a specific patient, please speak with your charge nurse or on-site clinical staff. I'm happy to help with general facility policies, procedures, or preparation questions."
 - If a non-patient-specific version of the question is reasonable to answer (e.g. a general policy or procedure question), offer to help with that instead.`;
 
+// Referral shown when an organization has restrictToKnowledgeBase enabled and the
+// assistant would otherwise answer from its own general knowledge. Wording follows the
+// precedent set by HIPAA_GUARDRAIL above. Used whenever the org has not authored its own.
+const DEFAULT_KNOWLEDGE_REDIRECT = `I can only share your facility's own guidance here. For anything beyond that, please check with your charge nurse or supervisor.`;
+
+/**
+ * Prompt block appended for organizations that restrict the assistant to their own
+ * knowledge. Enforcement lives in the reportSource tool — this block exists to make the
+ * model report honestly so that gate actually fires.
+ */
+function knowledgeRestrictionDirective(): string {
+  return `\n---\nKNOWLEDGE RESTRICTION (active for this organization):
+Answer ONLY from [Source Knowledge], [Document Knowledge], or [Karibu Manual]. Never answer from your own general knowledge, even when you are confident and even when the question seems harmless.
+- If you cannot answer from those sources, do NOT answer. Call reportSource with "general" and then follow exactly the instruction it returns.
+- Report honestly. Never label a general-knowledge answer as "source", "document", or "manual" to work around this rule.
+- Greetings, small talk, acknowledgments, clarifying questions back to the user, and describing your own capabilities are still allowed — report those as "conversational" as usual.`;
+}
+
 // ─── GET /chat/ml/:microlearningId ─────────────────────────────────────────────
 
 /**
@@ -743,7 +761,11 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
 
   const [[assistantOrg], [assistantLearner]] = await Promise.all([
     db
-      .select({ name: organizations.name })
+      .select({
+        name: organizations.name,
+        restrictToKnowledgeBase: organizations.restrictToKnowledgeBase,
+        knowledgeRedirectMessage: organizations.knowledgeRedirectMessage,
+      })
       .from(organizations)
       .where(eq(organizations.id, auth.organizationId))
       .limit(1),
@@ -754,6 +776,12 @@ chat.post('/assistant', zValidator('json', assistantChatSchema), async (c) => {
       .limit(1),
   ]);
   const assistantOrgName = assistantOrg?.name ?? 'your organization';
+
+  // Org-level guardrail: block answers drawn from the model's own general knowledge and
+  // refer the learner to a human instead. Enforced in the reportSource tool below.
+  const restrictGeneral = assistantOrg?.restrictToKnowledgeBase ?? false;
+  const knowledgeRedirect =
+    assistantOrg?.knowledgeRedirectMessage?.trim() || DEFAULT_KNOWLEDGE_REDIRECT;
   const assistantLearnerName = formatLearnerName(assistantLearner?.firstName, assistantLearner?.lastName);
 
   // Language the assistant replies in. Mutable so the setLanguage tool can flip it.
@@ -803,6 +831,7 @@ You MUST call reportSource before writing your response, describing what your re
 If the learner asks to switch to a language you support, call setLanguage with that language and then continue in it. If they ask for a language you don't support, tell them it isn't available and keep going in the current language.
 ${assistantPersonaLine}
 ${languageDirective(assistantLanguage)}
+${restrictGeneral ? knowledgeRestrictionDirective() : ''}
 ${HIPAA_GUARDRAIL}`;
 
   // Track the best knowledge source used during this response:
@@ -811,6 +840,8 @@ ${HIPAA_GUARDRAIL}`;
   // 'conversational' = non-informational reply (no badge shown)
   let dataSource: 'source' | 'document' | 'manual' | 'general' | 'conversational' | null = null;
   let searchWasCalled = false;
+  // Set when the knowledge restriction turned a 'general' answer into a referral.
+  let blockedByRestriction = false;
 
   const result = streamText({
     model: openai(env.OPENAI_CHAT_MODEL),
@@ -899,6 +930,21 @@ ${HIPAA_GUARDRAIL}`;
         }),
         execute: async ({ source }: { source: 'source' | 'document' | 'manual' | 'general' | 'conversational' }) => {
           dataSource = source;
+
+          // The model must call this before writing its response, so intercepting here
+          // blocks the answer before any ungrounded content has been generated.
+          if (source === 'general' && restrictGeneral) {
+            blockedByRestriction = true;
+            logger.debug(
+              { organizationId: auth.organizationId, chatId },
+              'General-knowledge answer blocked by org knowledge restriction.',
+            );
+            return `BLOCKED: This organization does not permit answering from general knowledge. `
+              + `Do not answer the user's question and do not include any general-knowledge information, `
+              + `hints, or partial answers. Reply with only the following message, translated into the `
+              + `learner's language if it differs, and nothing else:\n\n${knowledgeRedirect}`;
+          }
+
           return 'Recorded.';
         },
       },
@@ -911,7 +957,11 @@ ${HIPAA_GUARDRAIL}`;
     messageMetadata: ({ part }) => {
       if (part.type === 'finish') {
         const meta: Record<string, unknown> = {};
-        if (dataSource ?? (searchWasCalled ? 'general' : null)) {
+        if (blockedByRestriction) {
+          // Not a general-knowledge answer — a referral. Labelling it "General Knowledge"
+          // in the UI would tell the learner the opposite of what happened.
+          meta.dataSource = 'restricted';
+        } else if (dataSource ?? (searchWasCalled ? 'general' : null)) {
           meta.dataSource = dataSource ?? 'general';
         }
         if (assistantLanguageChanged) {

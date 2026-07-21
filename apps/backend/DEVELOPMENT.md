@@ -249,6 +249,38 @@ Precedence (see `resolveSessionAvatar` in `src/routes/chat.ts`):
 
 One-off backfill for pre-existing orgs: `pnpm backfill-org-default-avatar` sets any null `default_avatar_id` to the fallback avatar. Run it **before** `pnpm db:push` applies the NOT NULL constraint (against the live DB the column is still nullable, so the update can match legacy rows).
 
+## Knowledge Restriction Guardrail
+
+An org-level setting that stops the free-form assistant from answering out of the model's own general knowledge, referring the learner to a human instead. Motivated by healthcare/LTC liability: an ungrounded answer the facility never authored or reviewed still arrives wearing the facility's assistant.
+
+Applies to the assistant (`POST /chat/assistant`) only. Microlearning chat is already scoped to its topic and objectives, and has no source-labeling signal to gate on.
+
+### Data model
+
+Two columns on `organizations`:
+- `restrict_to_knowledge_base boolean NOT NULL DEFAULT false` — master toggle. Default off, so existing orgs are unchanged until an admin opts in.
+- `knowledge_redirect_message text` — admin-authored referral text. Null/blank falls back to `DEFAULT_KNOWLEDGE_REDIRECT` in `src/routes/chat.ts`. Configurable because facilities use different titles (charge nurse, supervisor, DON, clinical manager).
+
+Both are read in the assistant route's existing org select — no extra query. That path reads from the DB per request rather than the org cache, so cache invalidation is not a concern for these fields.
+
+### Enforcement
+
+The assistant's system prompt already requires the model to call the `reportSource` tool **before writing its response**, reporting one of `source | document | manual | general | conversational`. Because that call lands before any answer text is generated, gating it blocks the answer while zero ungrounded tokens exist.
+
+When the toggle is on and the model reports `general`, `reportSource`'s `execute` returns a BLOCKED directive carrying the org's referral text instead of `'Recorded.'`, and sets `blockedByRestriction`. The model then emits only that referral — which keeps it in the learner's language and in the session persona, at no safety cost.
+
+`knowledgeRestrictionDirective()` adds a matching prompt block (placed before `HIPAA_GUARDRAIL` so the HIPAA rules keep end-of-prompt recency). Its job is to make the model report *honestly* — the tool gate only fires if it does.
+
+`conversational` (greetings, small talk, acknowledgments, clarifying questions, capability descriptions) is a separate value from `general` and stays permitted.
+
+### Response metadata
+
+A blocked turn emits `dataSource: 'restricted'` rather than `'general'`. The frontend deliberately renders no badge for it (`ChatMessage.tsx`) — a "General Knowledge" badge on a referral would tell the learner the opposite of what happened.
+
+### Known limitation
+
+Enforcement depends on the model self-reporting accurately; a turn mislabeled `source` or `document` bypasses the gate. This is the same reliability ceiling the source badges and `HIPAA_GUARDRAIL` already operate under — a strong guardrail, not a guarantee.
+
 ## Message Flagging
 
 ### Data Model

@@ -21,9 +21,11 @@ interface ChatMessageProps {
   onOptionClick?: (text: string) => void;
 }
 
-type DataSource = "source" | "document" | "manual" | "general" | "conversational";
+type DataSource = "source" | "document" | "manual" | "general" | "conversational" | "restricted";
 
-// "conversational" intentionally omitted — non-informational replies show no badge.
+// "conversational" and "restricted" intentionally omitted — non-informational replies and
+// referrals blocked by the org knowledge restriction show no badge. The referral text
+// speaks for itself, and a "General Knowledge" badge on it would be actively wrong.
 const DATA_SOURCE_CONFIG: Partial<Record<DataSource, { icon: React.ElementType; label: (orgName?: string) => string }>> = {
   source: { icon: BadgeCheck, label: (orgName) => `${orgName ? `${orgName} ` : ""}Verified` },
   document: { icon: FileText, label: (orgName) => `${orgName ? `${orgName} ` : ""}Documents` },

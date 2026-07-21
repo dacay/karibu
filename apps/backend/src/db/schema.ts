@@ -41,6 +41,11 @@ export const organizations = pgTable('organizations', {
   // preference of their own — stored as plain uuid (no FK) to avoid circular
   // reference with the avatars table. Always set (backfilled + set on org creation).
   defaultAvatarId: uuid('default_avatar_id').notNull(),
+  // When true, the assistant may only answer from organizational knowledge and the
+  // Karibu manual — general-knowledge answers are blocked and replaced with a referral.
+  restrictToKnowledgeBase: boolean('restrict_to_knowledge_base').notNull().default(false),
+  // Admin-authored referral text used when an answer is blocked. Null = built-in default.
+  knowledgeRedirectMessage: text('knowledge_redirect_message'),
   logoUpdatedAt: timestamp('logo_updated_at'),
   ...timestamps,
 });

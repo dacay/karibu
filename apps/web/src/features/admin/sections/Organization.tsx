@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff, UserCircle } from "lucide-react";
+import { Upload, CheckCircle, AlertCircle, Building2, Timer, ImageOff, UserCircle, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import { api, localizationFor, type OrgConfig, type Avatar } from "@/lib/api";
 import { useSubdomain } from "@/hooks/useSubdomain";
@@ -13,8 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+
+// Mirrors DEFAULT_KNOWLEDGE_REDIRECT in the backend's chat route — shown as placeholder
+// text so admins can see what a blank referral message falls back to.
+const DEFAULT_KNOWLEDGE_REDIRECT =
+  "I can only share your facility's own guidance here. For anything beyond that, please check with your charge nurse or supervisor.";
 
 type UploadStatus = "idle" | "uploading" | "done" | "error";
 
@@ -166,9 +173,12 @@ export function OrganizationSection() {
   const [learnerTermPlural, setLearnerTermPlural] = useState("users");
   const [expirationIntervalHours, setExpirationIntervalHours] = useState(8);
   const [defaultAvatarId, setDefaultAvatarId] = useState<string>("");
+  const [restrictToKnowledgeBase, setRestrictToKnowledgeBase] = useState(false);
+  const [knowledgeRedirectMessage, setKnowledgeRedirectMessage] = useState("");
   const [identitySaveStatus, setIdentitySaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [sessionSaveStatus, setSessionSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [avatarSaveStatus, setAvatarSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [knowledgeSaveStatus, setKnowledgeSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
     if (config) {
@@ -178,6 +188,8 @@ export function OrganizationSection() {
       setLearnerTermPlural(config.learnerTermPlural);
       setExpirationIntervalHours(config.expirationIntervalHours);
       setDefaultAvatarId(config.defaultAvatarId);
+      setRestrictToKnowledgeBase(config.restrictToKnowledgeBase);
+      setKnowledgeRedirectMessage(config.knowledgeRedirectMessage ?? "");
     }
   }, [config]);
 
@@ -226,6 +238,28 @@ export function OrganizationSection() {
     },
   });
 
+  const knowledgeMutation = useMutation({
+    mutationFn: (body: { restrictToKnowledgeBase: boolean; knowledgeRedirectMessage: string | null }) =>
+      api.org.updateConfig(body),
+    onMutate: () => setKnowledgeSaveStatus("saving"),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["org", "config"], updated);
+      setKnowledgeSaveStatus("saved");
+      setTimeout(() => setKnowledgeSaveStatus("idle"), 2000);
+    },
+    onError: () => {
+      setKnowledgeSaveStatus("error");
+      setTimeout(() => setKnowledgeSaveStatus("idle"), 3000);
+    },
+  });
+
+  function handleKnowledgeSave() {
+    knowledgeMutation.mutate({
+      restrictToKnowledgeBase,
+      knowledgeRedirectMessage: knowledgeRedirectMessage.trim() || null,
+    });
+  }
+
   function handleAvatarSave() {
     if (!defaultAvatarId) return;
     avatarMutation.mutate({ defaultAvatarId });
@@ -255,6 +289,10 @@ export function OrganizationSection() {
 
   const isAvatarDirty =
     defaultAvatarId !== (config?.defaultAvatarId ?? "");
+
+  const isKnowledgeDirty =
+    restrictToKnowledgeBase !== (config?.restrictToKnowledgeBase ?? false) ||
+    knowledgeRedirectMessage !== (config?.knowledgeRedirectMessage ?? "");
 
   const allAvatars = avatarsData?.avatars ?? [];
 
@@ -433,6 +471,81 @@ export function OrganizationSection() {
                   </span>
                 )}
                 {sessionSaveStatus === "error" && (
+                  <span className="flex items-center gap-1 text-sm text-destructive">
+                    <AlertCircle className="size-3.5" />
+                    Failed to save.
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Knowledge restriction */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldCheck className="size-4" />
+                Answer restrictions
+              </CardTitle>
+              <CardDescription>
+                Control whether the assistant may answer from its own general knowledge.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="restrict-knowledge">Restrict to organization knowledge</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When on, the assistant answers only from your knowledge base, documents,
+                    and the Karibu manual. Anything else gets a referral instead of an answer.
+                    Greetings and small talk are unaffected.
+                  </p>
+                </div>
+                <Switch
+                  id="restrict-knowledge"
+                  checked={restrictToKnowledgeBase}
+                  onCheckedChange={setRestrictToKnowledgeBase}
+                />
+              </div>
+
+              {restrictToKnowledgeBase && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="knowledge-redirect">
+                    Referral message{" "}
+                    <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="knowledge-redirect"
+                    value={knowledgeRedirectMessage}
+                    onChange={(e) => setKnowledgeRedirectMessage(e.target.value)}
+                    placeholder={DEFAULT_KNOWLEDGE_REDIRECT}
+                    maxLength={500}
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shown when the assistant can't answer from your knowledge. Leave blank to
+                    use the default above. Translated to the learner's language automatically.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  onClick={handleKnowledgeSave}
+                  disabled={!isKnowledgeDirty || knowledgeSaveStatus === "saving"}
+                  size="sm"
+                >
+                  {knowledgeSaveStatus === "saving" && <Spinner className="mr-1.5" />}
+                  {knowledgeSaveStatus === "saving" ? "Saving..." : "Save changes"}
+                </Button>
+
+                {knowledgeSaveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-sm text-green-600">
+                    <CheckCircle className="size-3.5" />
+                    Saved.
+                  </span>
+                )}
+                {knowledgeSaveStatus === "error" && (
                   <span className="flex items-center gap-1 text-sm text-destructive">
                     <AlertCircle className="size-3.5" />
                     Failed to save.

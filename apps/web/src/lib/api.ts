@@ -381,6 +381,8 @@ export interface OrgConfig {
   learnerTermPlural: string;
   expirationIntervalHours: number;
   defaultAvatarId: string;
+  restrictToKnowledgeBase: boolean;
+  knowledgeRedirectMessage: string | null;
   logoUpdatedAt: string | null;
 }
 
@@ -750,7 +752,7 @@ export const api = {
   org: {
     getPublic: () => request<{ logoUpdatedAt: string | null }>("/org/public"),
     getConfig: () => request<OrgConfig>("/org/config"),
-    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string }) =>
+    updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string; restrictToKnowledgeBase?: boolean; knowledgeRedirectMessage?: string | null }) =>
       request<OrgConfig>("/org/config", {
         method: "PATCH",
         body: JSON.stringify(body),

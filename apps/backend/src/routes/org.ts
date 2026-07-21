@@ -45,6 +45,8 @@ const updateConfigSchema = z.object({
   learnerTermPlural: z.string().min(1).max(50).optional(),
   expirationIntervalHours: z.number().int().min(1).max(720).optional(),
   defaultAvatarId: z.string().uuid().optional(),
+  restrictToKnowledgeBase: z.boolean().optional(),
+  knowledgeRedirectMessage: z.string().max(500).optional().nullable(),
 });
 
 /**
@@ -66,6 +68,8 @@ org.get('/config', async (c) => {
         learnerTermPlural: organizations.learnerTermPlural,
         expirationIntervalHours: organizations.expirationIntervalHours,
         defaultAvatarId: organizations.defaultAvatarId,
+        restrictToKnowledgeBase: organizations.restrictToKnowledgeBase,
+        knowledgeRedirectMessage: organizations.knowledgeRedirectMessage,
         logoUpdatedAt: organizations.logoUpdatedAt,
       })
       .from(organizations)
@@ -97,7 +101,7 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
     const organization = c.get('organization');
     const body = c.req.valid('json');
 
-    const updates: Record<string, string | number | null> = {};
+    const updates: Record<string, string | number | boolean | null> = {};
 
     if (body.name !== undefined) {
       updates.name = body.name;
@@ -117,6 +121,15 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
 
     if (body.expirationIntervalHours !== undefined) {
       updates.expirationIntervalHours = body.expirationIntervalHours;
+    }
+
+    if (body.restrictToKnowledgeBase !== undefined) {
+      updates.restrictToKnowledgeBase = body.restrictToKnowledgeBase;
+    }
+
+    if (body.knowledgeRedirectMessage !== undefined) {
+      // Blank falls back to the backend's built-in referral text.
+      updates.knowledgeRedirectMessage = body.knowledgeRedirectMessage?.trim() || null;
     }
 
     if (body.defaultAvatarId !== undefined) {
@@ -157,6 +170,8 @@ org.patch('/config', zValidator('json', updateConfigSchema), async (c) => {
         learnerTermPlural: organizations.learnerTermPlural,
         expirationIntervalHours: organizations.expirationIntervalHours,
         defaultAvatarId: organizations.defaultAvatarId,
+        restrictToKnowledgeBase: organizations.restrictToKnowledgeBase,
+        knowledgeRedirectMessage: organizations.knowledgeRedirectMessage,
       });
 
     invalidateOrgCache(organization.subdomain);
