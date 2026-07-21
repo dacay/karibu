@@ -8,5 +8,11 @@
     "create-org": "pnpm --filter karibu-backend db:create-org",
     "add-admin": "pnpm --filter karibu-backend db:add-admin",
     "reset-password": "pnpm --filter karibu-backend db:reset-password"
+  },
+  "pnpm": {
+    "overrides": {
+      "@smithy/types": "4.16.1",
+      "@smithy/smithy-client": "4.12.6"
+    }
   }
 }

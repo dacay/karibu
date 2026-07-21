@@ -14,6 +14,7 @@ import sequences from './sequences.js';
 import userGroups from './user-groups.js';
 import metrics from './metrics.js';
 import flags from './flags.js';
+import reports from './reports.js';
 import learnerSSE from './learner-sse.js';
 import adminLearners from './admin-learners.js';
 
@@ -68,7 +69,10 @@ export const registerRoutes = (app: Hono) => {
 
   // Flagged messages routes
   app.route('/flags', flags);
-  
+
+  // Reports routes (admin only)
+  app.route('/reports', reports);
+
   // Admin learner details routes (admin only)
   app.route('/admin/learners', adminLearners);
 

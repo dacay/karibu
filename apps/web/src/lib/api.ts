@@ -128,6 +128,16 @@ export interface Document {
   updatedAt: string;
 }
 
+export interface ReportFile {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  lastModified: string;
+  description: string | null;
+  viewUrl: string;
+  downloadUrl: string;
+}
+
 export type ResponseLength = "short" | "medium" | "long";
 
 export interface ConversationPattern {
@@ -770,6 +780,10 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+  },
+  reports: {
+    list: () =>
+      request<{ reports: ReportFile[]; configured: boolean }>("/reports"),
   },
   adminLearners: {
     list: () =>

@@ -8,7 +8,7 @@ import { LearnerRoot } from "@/features/learner";
 import { Spinner } from "@/components/ui/spinner";
 import { AVATARS_ENABLED } from "@/lib/features";
 
-const ADMIN_ONLY_SECTIONS = new Set(["source", "microlearnings", "avatars", "patterns", "team", "flagged"]);
+const ADMIN_ONLY_SECTIONS = new Set(["source", "microlearnings", "avatars", "patterns", "team", "flagged", "reports"]);
 
 export default function SectionPage() {
   const { user, isLoading } = useAuth();

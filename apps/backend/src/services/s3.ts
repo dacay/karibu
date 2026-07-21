@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
@@ -65,6 +66,19 @@ const getAssetsBucketName = (): string => {
 
   return env.S3_ASSETS_BUCKET_NAME;
 }
+
+const getReportsBucketName = (): string => {
+
+  if (!env.S3_REPORTS_BUCKET_NAME) {
+
+    throw new Error('S3_REPORTS_BUCKET_NAME is not configured.');
+  }
+
+  return env.S3_REPORTS_BUCKET_NAME;
+}
+
+export const isReportsBucketConfigured = (): boolean =>
+  Boolean(env.S3_REPORTS_BUCKET_NAME && env.AWS_REGION && env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY)
 
 export interface UploadResult {
   s3Key: string;
@@ -175,6 +189,93 @@ export const downloadFromAssetsBucket = async (
     body: Buffer.concat(chunks),
     contentType: response.ContentType ?? 'application/octet-stream',
   };
+}
+
+// ─── Reports bucket (private, presigned access) ────────────────────────────────
+
+export interface ReportObject {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  lastModified: string;
+}
+
+/**
+ * Build the S3 key prefix under which an organization's report files live.
+ * Pattern: {S3_REPORTS_KEY_PREFIX}/{organizationId}/
+ * Uses organizationId (immutable UUID) as the folder, matching the documents bucket rationale.
+ */
+export const buildReportsKeyPrefix = (organizationId: string): string => {
+
+  const prefix = env.S3_REPORTS_KEY_PREFIX ? `${env.S3_REPORTS_KEY_PREFIX}/` : '';
+
+  return `${prefix}${organizationId}/`;
+}
+
+/**
+ * List all report files stored for an organization.
+ * Returns objects sorted newest-first by lastModified. Folder placeholder keys
+ * (those ending in "/") are skipped. Handles pagination transparently.
+ */
+export const listReportObjects = async (organizationId: string): Promise<ReportObject[]> => {
+
+  const client = getS3Client();
+  const bucket = getReportsBucketName();
+  const prefix = buildReportsKeyPrefix(organizationId);
+
+  const objects: ReportObject[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+
+    const response = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: prefix,
+      ContinuationToken: continuationToken,
+    }));
+
+    for (const item of response.Contents ?? []) {
+
+      if (!item.Key || item.Key.endsWith('/')) continue;
+
+      objects.push({
+        key: item.Key,
+        name: item.Key.slice(prefix.length),
+        sizeBytes: item.Size ?? 0,
+        lastModified: (item.LastModified ?? new Date()).toISOString(),
+      });
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+
+  } while (continuationToken);
+
+  objects.sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+
+  return objects;
+}
+
+/**
+ * Generate a presigned GET URL for a report object.
+ * `disposition` controls whether the browser renders the file inline (view)
+ * or forces a download (attachment). `filename` sets the download filename.
+ * The key is validated against the organization's prefix by the caller.
+ */
+export const getReportPresignedUrl = async (
+  key: string,
+  disposition: 'inline' | 'attachment',
+  filename: string,
+): Promise<string> => {
+
+  const client = getS3Client();
+
+  const command = new GetObjectCommand({
+    Bucket: getReportsBucketName(),
+    Key: key,
+    ResponseContentDisposition: `${disposition}; filename="${filename.replace(/"/g, '')}"`,
+  });
+
+  return getSignedUrl(client, command, { expiresIn: env.S3_REPORTS_URL_EXPIRY_SECONDS });
 }
 
 /**
