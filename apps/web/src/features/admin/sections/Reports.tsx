@@ -10,25 +10,12 @@ import { api, type ReportFile } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatDateHeading(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
@@ -80,11 +67,6 @@ function ReportRow({ report }: { report: ReportFile }) {
             {report.description}
           </p>
         )}
-        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/80">
-          <span>{formatBytes(report.sizeBytes)}</span>
-          <span aria-hidden>·</span>
-          <span>{formatTime(report.lastModified)}</span>
-        </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 -mt-0.5">
