@@ -14,6 +14,7 @@ import {
   Moon,
   Monitor,
   Flag,
+  FileText,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
@@ -51,8 +52,9 @@ import { PatternsSection } from "./sections/Patterns";
 import { TeamSection } from "./sections/Team";
 import { OrganizationSection } from "./sections/Organization";
 import { FlaggedMessagesSection } from "./sections/FlaggedMessages";
+import { ReportsSection } from "./sections/Reports";
 
-type SectionId = "dashboard" | "source" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged";
+type SectionId = "dashboard" | "source" | "microlearnings" | "avatars" | "patterns" | "team" | "organization" | "flagged" | "reports";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -63,6 +65,7 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
   { id: "team", label: "Team", icon: Users },
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "flagged", label: "Flagged", icon: Flag },
+  { id: "reports", label: "Reports", icon: FileText },
 ];
 
 function getInitials(email: string): string {
@@ -224,6 +227,7 @@ export function AdminRoot() {
           {activeSection === "team" && <TeamSection />}
           {activeSection === "organization" && <OrganizationSection />}
           {activeSection === "flagged" && <FlaggedMessagesSection />}
+          {activeSection === "reports" && <ReportsSection />}
         </main>
       </div>
     </div>

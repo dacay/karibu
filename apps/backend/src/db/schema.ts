@@ -311,3 +311,16 @@ export const documents = pgTable('documents', {
 }, (table) => [
   index('documents_organization_id_idx').on(table.organizationId),
 ]);
+
+// Report descriptions table - rules that attach a human-readable description to
+// report files whose filename contains a given substring. Report files themselves
+// live in the reports S3 bucket (uploaded externally); these rows only describe them.
+export const reportDescriptions = pgTable('report_descriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  matchText: text('match_text').notNull(), // case-insensitive substring matched against the filename
+  description: text('description').notNull(),
+  ...timestamps,
+}, (table) => [
+  index('report_descriptions_organization_id_idx').on(table.organizationId),
+]);

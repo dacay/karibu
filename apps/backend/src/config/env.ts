@@ -63,6 +63,11 @@ const envSchema = z.object({
   S3_ASSETS_BUCKET_NAME: z.string().min(1).optional(),
   S3_ASSETS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
 
+  // S3 — Reports (private, presigned access; files uploaded externally per organization)
+  S3_REPORTS_BUCKET_NAME: z.string().min(1).optional(),
+  S3_REPORTS_KEY_PREFIX: z.string().default('').transform((val) => val.replace(/^\/+|\/+$/g, '')),
+  S3_REPORTS_URL_EXPIRY_SECONDS: z.string().default('3600').transform(Number),
+
   // CloudFront — Distribution ID for CDN cache invalidation on asset updates
   CLOUDFRONT_DISTRIBUTION_ID: z.string().min(1).optional(),
 

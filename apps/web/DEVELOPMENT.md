@@ -14,7 +14,7 @@ Admin sections use URL-based routing:
 
 `src/app/[section]/page.tsx` handles all section routes. It contains `ADMIN_ONLY_SECTIONS` — a set of section IDs that learners cannot access (they get redirected to `/`). Admins can access any route. **Update `ADMIN_ONLY_SECTIONS` whenever a new admin-only section is added.**
 
-Current admin-only sections: `dna`, `microlearnings`, `avatars`, `patterns`, `team`, `flagged`
+Current admin-only sections: `dna`, `microlearnings`, `avatars`, `patterns`, `team`, `flagged`, `reports`
 
 ## DNA Auto-Discovery
 
@@ -35,6 +35,15 @@ When `?test=true` is present and the user is an admin:
 - Old test chats are preserved in the DB but never surfaced to the admin
 
 Learner behavior is completely unaffected by this parameter.
+
+## Reports
+
+Admins browse organization report files at `/reports` (`ReportsSection`). Report files are uploaded externally to a private S3 bucket under the org's prefix; the page lists them grouped by date (newest first) with a matched description and View/Download actions.
+
+- **View**: PDFs open in a new tab via a presigned inline URL. Non-PDF files show only a Download action.
+- **Download**: presigned attachment URL served with the original filename.
+- **Descriptions**: a collapsible "Description rules" panel lets admins attach a description to files by filename substring (case-insensitive). When several rules match a file, the longest match wins. Rules are backed by the `report_descriptions` table.
+- **Backend route**: `/reports` — GET to list files (with presigned URLs and matched descriptions), plus `/reports/descriptions` CRUD. See [Backend DEVELOPMENT.md](../backend/DEVELOPMENT.md#reports).
 
 ## Message Flagging
 

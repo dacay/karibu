@@ -126,6 +126,25 @@ export interface Document {
   updatedAt: string;
 }
 
+export interface ReportFile {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  lastModified: string;
+  description: string | null;
+  viewUrl: string;
+  downloadUrl: string;
+}
+
+export interface ReportDescription {
+  id: string;
+  organizationId: string;
+  matchText: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ResponseLength = "short" | "medium" | "long";
 
 export interface ConversationPattern {
@@ -667,6 +686,26 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+  },
+  reports: {
+    list: () =>
+      request<{ reports: ReportFile[]; configured: boolean }>("/reports"),
+    descriptions: {
+      list: () =>
+        request<{ descriptions: ReportDescription[] }>("/reports/descriptions"),
+      create: (body: { matchText: string; description: string }) =>
+        request<{ description: ReportDescription }>("/reports/descriptions", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
+      update: (id: string, body: { matchText?: string; description?: string }) =>
+        request<{ description: ReportDescription }>(`/reports/descriptions/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }),
+      delete: (id: string) =>
+        request<{ success: boolean }>(`/reports/descriptions/${id}`, { method: "DELETE" }),
+    },
   },
   adminLearners: {
     list: () =>
