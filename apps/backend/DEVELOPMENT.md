@@ -307,10 +307,27 @@ Enforcement depends on the model self-reporting accurately; a turn mislabeled `s
 Admins browse report files stored in the private reports S3 bucket. Files are uploaded **externally** (e.g. by a scheduled job or manual upload) under the org's key prefix — the backend never uploads them, it only lists and presigns.
 
 ### Flow
-1. `GET /reports` lists objects under `buildReportsKeyPrefix(orgId)` via `listReportObjects()` (paginated `ListObjectsV2`), sorted newest-first by `lastModified`.
-2. For each file, a description is matched from the `REPORT_DESCRIPTIONS` list (first matching regex wins).
-3. Two presigned GET URLs are generated per file: `viewUrl` (`inline` disposition) and `downloadUrl` (`attachment`), expiring after `S3_REPORTS_URL_EXPIRY_SECONDS` (default 3600).
-4. When the reports bucket/credentials are unconfigured, the route returns `{ reports: [], configured: false }` rather than erroring, so the admin UI renders an empty state.
+1. `GET /reports` lists objects under `buildReportsKeyPrefix(orgId)` via `listReportObjects()` (paginated `ListObjectsV2`), sorted newest-first by report `date` (ties broken by `lastModified`).
+2. Each filename is split by `parseReportFilename()` into a display `name` and a `date` (see "Report dates" below).
+3. For each file, a description is matched from the `REPORT_DESCRIPTIONS` list (first matching regex wins).
+4. Two presigned GET URLs are generated per file: `viewUrl` (`inline` disposition) and `downloadUrl` (`attachment`), expiring after `S3_REPORTS_URL_EXPIRY_SECONDS` (default 3600).
+5. When the reports bucket/credentials are unconfigured, the route returns `{ reports: [], configured: false }` rather than erroring, so the admin UI renders an empty state.
+
+### Report dates
+
+S3's `LastModified` is upload time and **cannot be set** — even a copy-in-place resets it to now. Since report files are produced externally, the filename is where the producer states which date a report covers. `parseReportFilename()` in `src/services/s3.ts` reads a `YYYY-MM-DD` from the **start or end** of the filename and returns it as the report's `date`, falling back to the `LastModified` date when the filename carries none.
+
+```
+2026-07-21 Policy Consistency Review.pdf  → name "Policy Consistency Review.pdf", date 2026-07-21
+policy-consistency-review_20260721.pdf    → name "policy-consistency-review.pdf",  date 2026-07-21
+Policy Consistency Review.pdf             → name unchanged,                        date = upload date
+```
+
+- Separators between the date parts are optional (`2026-07-21`, `2026_07_21`, `20260721`), as is the gap to the rest of the name.
+- Impossible dates (`2026-13-45`) are rejected and left as part of the name.
+- A filename that is *only* a date keeps its original name.
+- The date is stripped from the **display** name only. `ReportObject.filename` keeps the raw name and is what the presigned content-disposition uses, so downloaded files still carry their date.
+- Description matching runs against the stripped name, which is why `REPORT_DESCRIPTIONS` patterns need not account for the date.
 
 ### Report descriptions
 

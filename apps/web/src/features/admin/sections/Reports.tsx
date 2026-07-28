@@ -10,8 +10,12 @@ import { api, type ReportFile } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDateHeading(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+// Formats a plain YYYY-MM-DD. Parsed part-by-part so the day is read as a
+// calendar date rather than a UTC instant that can shift a day in local time.
+function formatDateHeading(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -23,7 +27,13 @@ function isPdf(name: string): boolean {
   return name.toLowerCase().endsWith(".pdf");
 }
 
-// Group reports by the calendar day of their lastModified timestamp, newest first.
+// Display only — the extension stays on `name` for isPdf() and for the
+// server-side description matching, and on the downloaded file itself.
+function stripExtension(name: string): string {
+  return name.replace(/\.[^.]+$/, "");
+}
+
+// Group reports by their report date (filename-derived, else upload date), newest first.
 interface ReportGroup {
   dateKey: string;
   label: string;
@@ -34,13 +44,11 @@ function groupByDate(reports: ReportFile[]): ReportGroup[] {
   const groups = new Map<string, ReportFile[]>();
 
   for (const report of reports) {
-    const d = new Date(report.lastModified);
-    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const existing = groups.get(dateKey);
+    const existing = groups.get(report.date);
     if (existing) {
       existing.push(report);
     } else {
-      groups.set(dateKey, [report]);
+      groups.set(report.date, [report]);
     }
   }
 
@@ -48,7 +56,7 @@ function groupByDate(reports: ReportFile[]): ReportGroup[] {
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([dateKey, groupReports]) => ({
       dateKey,
-      label: formatDateHeading(groupReports[0].lastModified),
+      label: formatDateHeading(dateKey),
       reports: groupReports,
     }));
 }
@@ -61,7 +69,9 @@ function ReportRow({ report }: { report: ReportFile }) {
       <FileText className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{report.name}</p>
+        <p className="truncate text-sm font-medium text-foreground">
+          {stripExtension(report.name)}
+        </p>
         {report.description && (
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {report.description}

@@ -74,9 +74,11 @@ reportsRouter.get('/', async (c) => {
     name: obj.name,
     sizeBytes: obj.sizeBytes,
     lastModified: obj.lastModified,
+    date: obj.date,
     description: matchDescription(obj.name),
-    viewUrl: await getReportPresignedUrl(obj.key, 'inline', obj.name),
-    downloadUrl: await getReportPresignedUrl(obj.key, 'attachment', obj.name),
+    // Downloads keep the raw filename, so the date stays on the saved file.
+    viewUrl: await getReportPresignedUrl(obj.key, 'inline', obj.filename),
+    downloadUrl: await getReportPresignedUrl(obj.key, 'attachment', obj.filename),
   })));
 
   return c.json({ reports, configured: true });

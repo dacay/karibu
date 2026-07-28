@@ -46,8 +46,10 @@ Learner behavior is completely unaffected by this parameter.
 
 Admins browse organization report files at `/reports` (`ReportsSection`). Report files are uploaded externally to a private S3 bucket under the org's prefix; the page lists them grouped by date (newest first) with a matched description and View/Download actions.
 
+- **Names**: the listed name has both its date and its file extension stripped. Only the extension stripping is client-side (`stripExtension` in `ReportsSection`) — the API `name` keeps it, since `isPdf()` and the server-side description matching both read it.
 - **View**: PDFs open in a new tab via a presigned inline URL. Non-PDF files show only a Download action.
-- **Download**: presigned attachment URL served with the original filename.
+- **Download**: presigned attachment URL served with the original filename (date included).
+- **Dates**: the date heading comes from `report.date` — a `YYYY-MM-DD` the backend reads off the start or end of the filename (e.g. `2026-07-21 Policy Consistency Review.pdf`), falling back to the S3 upload date when the filename has none. Uploading with a dated filename is the only way to control a report's date, since S3's `LastModified` is not settable. The date is stripped from the name shown in the list. See [Backend DEVELOPMENT.md](../backend/DEVELOPMENT.md#report-dates).
 - **Descriptions**: matched server-side by regex against the filename. Edit the `REPORT_DESCRIPTIONS` list in `apps/backend/src/routes/reports.ts` to add a report type — there is no admin UI for this by design, since the set of report types is small and fixed.
 - **Backend route**: `GET /reports` — lists files with presigned URLs and matched descriptions. See [Backend DEVELOPMENT.md](../backend/DEVELOPMENT.md#reports).
 

@@ -133,6 +133,8 @@ export interface ReportFile {
   name: string;
   sizeBytes: number;
   lastModified: string;
+  /** Report date (`YYYY-MM-DD`) — from the filename when it carries one, else upload date. */
+  date: string;
   description: string | null;
   viewUrl: string;
   downloadUrl: string;

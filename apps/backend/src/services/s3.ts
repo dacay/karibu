@@ -195,9 +195,72 @@ export const downloadFromAssetsBucket = async (
 
 export interface ReportObject {
   key: string;
+  /** Display name — the filename with its date prefix/suffix stripped. */
   name: string;
+  /** Raw object filename, kept intact for the download disposition. */
+  filename: string;
   sizeBytes: number;
   lastModified: string;
+  /** Report date (`YYYY-MM-DD`), taken from the filename or falling back to `lastModified`. */
+  date: string;
+}
+
+/**
+ * Date patterns recognised at the start or end of a report filename, e.g.
+ * "2026-07-21 Policy Consistency Review.pdf" or "policy-review_20260721.pdf".
+ * Separators between the date parts are optional, as is the gap to the rest
+ * of the name. The trailing form is matched against the extension-less base.
+ */
+const REPORT_DATE_LEADING = /^(\d{4})[-_.]?(\d{2})[-_.]?(\d{2})[\s._-]*/;
+const REPORT_DATE_TRAILING = /[\s._-]*(\d{4})[-_.]?(\d{2})[-_.]?(\d{2})$/;
+
+/**
+ * Validate a Y/M/D triple and render it as `YYYY-MM-DD`, or null when the date
+ * does not exist (so "20261345" is treated as an ordinary part of the name).
+ */
+const toIsoDate = (year: string, month: string, day: string): string | null => {
+
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day)
+  ) return null;
+
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Split a report filename into its display name and its embedded date.
+ * Reports are uploaded externally, so the filename is the only place the
+ * producer can state which date a report covers — S3's `LastModified` is
+ * upload time and cannot be set. Returns a null date when no valid date is
+ * present, in which case the caller falls back to `LastModified`.
+ */
+export const parseReportFilename = (filename: string): { name: string; date: string | null } => {
+
+  const dot = filename.lastIndexOf('.');
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  const ext = dot > 0 ? filename.slice(dot) : '';
+
+  for (const pattern of [REPORT_DATE_LEADING, REPORT_DATE_TRAILING]) {
+
+    const match = base.match(pattern);
+
+    if (!match) continue;
+
+    const date = toIsoDate(match[1], match[2], match[3]);
+
+    if (!date) continue;
+
+    const stripped = base.replace(pattern, '').trim();
+
+    // A filename that is nothing but a date keeps its original name.
+    return { name: stripped ? `${stripped}${ext}` : filename, date };
+  }
+
+  return { name: filename, date: null };
 }
 
 /**
@@ -214,7 +277,7 @@ export const buildReportsKeyPrefix = (organizationId: string): string => {
 
 /**
  * List all report files stored for an organization.
- * Returns objects sorted newest-first by lastModified. Folder placeholder keys
+ * Returns objects sorted newest-first by report date. Folder placeholder keys
  * (those ending in "/") are skipped. Handles pagination transparently.
  */
 export const listReportObjects = async (organizationId: string): Promise<ReportObject[]> => {
@@ -238,11 +301,17 @@ export const listReportObjects = async (organizationId: string): Promise<ReportO
 
       if (!item.Key || item.Key.endsWith('/')) continue;
 
+      const filename = item.Key.slice(prefix.length);
+      const { name, date } = parseReportFilename(filename);
+      const lastModified = (item.LastModified ?? new Date()).toISOString();
+
       objects.push({
         key: item.Key,
-        name: item.Key.slice(prefix.length),
+        name,
+        filename,
         sizeBytes: item.Size ?? 0,
-        lastModified: (item.LastModified ?? new Date()).toISOString(),
+        lastModified,
+        date: date ?? lastModified.slice(0, 10),
       });
     }
 
@@ -250,7 +319,7 @@ export const listReportObjects = async (organizationId: string): Promise<ReportO
 
   } while (continuationToken);
 
-  objects.sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+  objects.sort((a, b) => b.date.localeCompare(a.date) || b.lastModified.localeCompare(a.lastModified));
 
   return objects;
 }
