@@ -35,6 +35,7 @@ userRouter.get('/me', async (c) => {
       fontSize: users.fontSize,
       onboardingCompletedAt: users.onboardingCompletedAt,
       defaultAvatarId: organizations.defaultAvatarId,
+      allowLanguageSelection: organizations.allowLanguageSelection,
     })
     .from(users)
     .innerJoin(organizations, eq(users.organizationId, organizations.id))
@@ -119,6 +120,7 @@ userRouter.patch('/preferences', zValidator('json', updatePreferencesSchema), as
       fontSize: users.fontSize,
       onboardingCompletedAt: users.onboardingCompletedAt,
       defaultAvatarId: organizations.defaultAvatarId,
+      allowLanguageSelection: organizations.allowLanguageSelection,
     })
     .from(users)
     .innerJoin(organizations, eq(users.organizationId, organizations.id))

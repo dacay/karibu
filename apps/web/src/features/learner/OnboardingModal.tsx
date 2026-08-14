@@ -111,6 +111,7 @@ export function OnboardingModal() {
   });
 
   const language: LanguageCode = profile?.language ?? "en";
+  const allowLanguageSelection = profile?.allowLanguageSelection ?? true;
 
   // Only show avatars available in the chosen language.
   const selectableAvatars = avatars.filter((a) => avatarSupportsLanguage(a, language));
@@ -188,22 +189,24 @@ export function OnboardingModal() {
             </p>
 
             {/* Language selector — filters the avatars shown below */}
-            <div className="mb-4 flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Language</span>
-              <div className="flex gap-1">
-                {LANGUAGES.map(({ code, label }) => (
-                  <Button
-                    key={code}
-                    type="button"
-                    size="sm"
-                    variant={language === code ? "default" : "outline"}
-                    onClick={() => { stop(); setPreviewingId(null); languageMutation.mutate(code); }}
-                  >
-                    {label}
-                  </Button>
-                ))}
+            {allowLanguageSelection && (
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Language</span>
+                <div className="flex gap-1">
+                  {LANGUAGES.map(({ code, label }) => (
+                    <Button
+                      key={code}
+                      type="button"
+                      size="sm"
+                      variant={language === code ? "default" : "outline"}
+                      onClick={() => { stop(); setPreviewingId(null); languageMutation.mutate(code); }}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
               {/* Default option */}

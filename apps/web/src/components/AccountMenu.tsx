@@ -83,6 +83,7 @@ export function AccountMenu() {
   });
 
   const language: LanguageCode = profileData?.user.language ?? "en";
+  const allowLanguageSelection = profileData?.user.allowLanguageSelection ?? true;
 
   const updateLanguageMutation = useMutation({
     mutationFn: (next: LanguageCode) => api.user.updatePreferences({ language: next }),
@@ -175,25 +176,29 @@ export function AccountMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
-          Language
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={language}
-          onValueChange={(val) => updateLanguageMutation.mutate(val as LanguageCode)}
-        >
-          {LANGUAGES.map(({ code, label }) => (
-            <DropdownMenuRadioItem
-              key={code}
-              value={code}
-              className="cursor-pointer"
-              onSelect={(e) => e.preventDefault()}
+        {allowLanguageSelection && (
+          <>
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal px-2 py-1">
+              Language
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={language}
+              onValueChange={(val) => updateLanguageMutation.mutate(val as LanguageCode)}
             >
-              {label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
+              {LANGUAGES.map(({ code, label }) => (
+                <DropdownMenuRadioItem
+                  key={code}
+                  value={code}
+                  className="cursor-pointer"
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
 
         {selectableAvatars.length > 0 && (
           <>

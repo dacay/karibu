@@ -46,6 +46,11 @@ export const organizations = pgTable('organizations', {
   restrictToKnowledgeBase: boolean('restrict_to_knowledge_base').notNull().default(false),
   // Admin-authored referral text used when an answer is blocked. Null = built-in default.
   knowledgeRedirectMessage: text('knowledge_redirect_message'),
+  // When false, the language picker is hidden from learners and they stay on the
+  // language they already have (`en` for everyone who never had a picker).
+  // Pilot-era toggle with no admin UI — set directly in SQL. Revisit (and likely
+  // replace with a proper per-org language policy) when multi-language ships fully.
+  allowLanguageSelection: boolean('allow_language_selection').notNull().default(true),
   logoUpdatedAt: timestamp('logo_updated_at'),
   ...timestamps,
 });

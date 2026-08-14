@@ -317,6 +317,8 @@ export interface UserProfile {
   fontSize: FontSize;
   onboardingCompletedAt: string | null;
   defaultAvatarId: string;
+  // Org-level: when false, the learner's language picker is hidden.
+  allowLanguageSelection: boolean;
 }
 
 export interface UserGroup {
