@@ -17,6 +17,7 @@
     "db:add-admin": "tsx src/scripts/add-admin.ts",
     "db:reset-password": "tsx src/scripts/reset-password.ts",
     "backfill-org-default-avatar": "tsx src/scripts/backfill-org-default-avatar.ts",
+    "retire-built-in-avatars": "tsx src/scripts/retire-built-in-avatars.ts",
     "set-ml-webhook": "tsx src/scripts/set-ml-completion-webhook.ts",
     "upload-manual": "tsx src/scripts/upload-manual.ts"
   },

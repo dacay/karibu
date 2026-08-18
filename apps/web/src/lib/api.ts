@@ -234,12 +234,17 @@ export const DEEPGRAM_VOICES: DeepgramVoice[] = [
   { id: "aura-2-aurora-en", name: "Aurora", language: "en", gender: "female", accent: "American", description: "Bright, energetic" },
   { id: "aura-2-athena-en", name: "Athena", language: "en", gender: "female", accent: "American", description: "Clear, authoritative" },
   { id: "aura-2-hera-en", name: "Hera", language: "en", gender: "female", accent: "American", description: "Formal, confident" },
+  { id: "aura-2-janus-en", name: "Janus", language: "en", gender: "female", accent: "American", description: "Southern, smooth" },
+  { id: "aura-2-electra-en", name: "Electra", language: "en", gender: "female", accent: "American", description: "Professional, engaging" },
+  { id: "aura-2-harmonia-en", name: "Harmonia", language: "en", gender: "female", accent: "American", description: "Empathetic, calm" },
   // English — male
   { id: "aura-2-orion-en", name: "Orion", language: "en", gender: "male", accent: "American", description: "Deep, resonant" },
   { id: "aura-2-arcas-en", name: "Arcas", language: "en", gender: "male", accent: "American", description: "Neutral, balanced" },
   { id: "aura-2-apollo-en", name: "Apollo", language: "en", gender: "male", accent: "American", description: "Clear, engaging" },
   { id: "aura-2-orpheus-en", name: "Orpheus", language: "en", gender: "male", accent: "American", description: "Rich, expressive" },
   { id: "aura-2-zeus-en", name: "Zeus", language: "en", gender: "male", accent: "American", description: "Bold, commanding" },
+  { id: "aura-2-mars-en", name: "Mars", language: "en", gender: "male", accent: "American", description: "Smooth, patient baritone" },
+  { id: "aura-2-odysseus-en", name: "Odysseus", language: "en", gender: "male", accent: "American", description: "Calm, professional" },
   // Spanish — female
   { id: "aura-2-celeste-es", name: "Celeste", language: "es", gender: "female", accent: "Colombian", description: "Energetic, friendly" },
   { id: "aura-2-estrella-es", name: "Estrella", language: "es", gender: "female", accent: "Latin American", description: "Warm, articulate" },

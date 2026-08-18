@@ -12,18 +12,19 @@ corresponding photo here using the exact filename, then run the seed:
 pnpm db:seed:defaults   # or pnpm db:seed:dev
 ```
 
-| File         | Avatar | Voice (Deepgram)        | Description of the source photo                                  |
-| ------------ | ------ | ----------------------- | ---------------------------------------------------------------- |
-| `amara.jpg`  | Amara  | Athena (authoritative)  | Professional woman in a navy blazer and glasses, office setting  |
-| `mei.jpg`    | Mei    | Aurora (bright)         | Young woman in a denim shirt with a bright, cheerful smile       |
-| `nora.jpg`   | Nora   | Asteria (warm)          | Nurse in blue scrubs with a stethoscope, hospital corridor       |
-| `julian.jpg` | Julian | Orion (deep)            | Man in a white lab coat and glasses, neutral grey background     |
-| `diego.jpg`  | Diego  | Apollo (engaging)       | Man with glasses and a beard in a casual tee, home-office setting |
+| File         | Avatar | Voice EN / ES              | Description of the source photo |
+| ------------ | ------ | -------------------------- | ------------------------------- |
+| `maria.jpg`  | Maria  | Janus / Estrella           |                                 |
+| `sofia.jpg`  | Sofia  | Electra / Diana            |                                 |
+| `ana.jpg`    | Ana    | Harmonia / Selena          |                                 |
+| `daniel.jpg` | Daniel | Orpheus / Néstor           |                                 |
+| `david.jpg`  | David  | Mars / Sirio               |                                 |
+| `alex.jpg`   | Alex   | Odysseus / Javier          |                                 |
 
 ## Notes
 
 - Supported formats: JPEG, PNG, WebP, GIF. If you use a different extension, update
-  the matching `imageFile` entry in `seed.defaults.ts`.
+  the matching `imageFile` entry in `built-in-avatars.ts`.
 - Seeding is resilient: if a file is missing or S3 isn't configured, the avatar is
   still created/updated — just without an image. Re-running the seed once the file
   and S3 credentials are present will backfill the image.

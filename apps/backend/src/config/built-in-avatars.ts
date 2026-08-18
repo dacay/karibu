@@ -15,94 +15,71 @@ export interface BuiltInAvatar {
 // the web app). Its `description` is written in the first person and in that
 // language: it is both spoken as the avatar's self-introduction
 // ("Hi, I'm {name}. {description}") and injected into the chat system prompt to
-// shape the AI's tone — so keep it short and in-character.
+// shape the AI's tone — so keep it to a single short sentence about tone only.
+// Deliberately no backstory: personas describe how the avatar speaks, never who
+// they are, so they can never compete with the organization's source of truth.
 //
 // BUILT_IN_AVATARS[0] is also the code-level fallback persona used when a
 // session has neither a learner-preferred nor an org-default avatar.
 export const BUILT_IN_AVATARS: BuiltInAvatar[] = [
   {
-    slug: 'amara',
-    name: 'Amara',
-    imageFile: 'amara.jpg',
+    slug: 'maria',
+    name: 'Maria',
+    imageFile: 'maria.jpg',
     localizations: {
       en: {
-        voiceId: 'aura-2-athena-en', // Clear, authoritative
-        description:
-          "I'm a leadership coach who's spent two decades in the boardroom. I'll keep things warm but direct — I believe in you, and I'll hold you to a high bar with a bit of dry humor along the way.",
+        voiceId: 'aura-2-janus-en', // Southern, smooth, trustworthy
+        description: " ",
       },
       es: {
         voiceId: 'aura-2-estrella-es', // Warm, articulate
-        description:
-          'Soy coach de liderazgo y he pasado dos décadas en la sala de juntas. Seré cálida pero directa contigo: creo en ti y te exigiré un alto nivel, siempre con algo de humor sutil por el camino.',
+        description: ' ',
       },
     },
   },
   {
-    slug: 'mei',
-    name: 'Mei',
-    imageFile: 'mei.jpg',
+    slug: 'sofia',
+    name: 'Sofia',
+    imageFile: 'sofia.jpg',
     localizations: {
       en: {
-        voiceId: 'aura-2-aurora-en', // Bright, energetic
-        description:
-          "I'm your upbeat study buddy — curious, quick to laugh, and always cheering you on. I like everyday examples and treating this like a shared adventure rather than a test.",
+        voiceId: 'aura-2-electra-en', // Professional, engaging
+        description: " ",
       },
       es: {
-        voiceId: 'aura-2-celeste-es', // Energetic, friendly
-        description:
-          'Soy tu compañera de estudio entusiasta: curiosa, siempre lista para reír y animándote en todo momento. Me gustan los ejemplos cotidianos y tratar esto como una aventura compartida, no como un examen.',
+        voiceId: 'aura-2-diana-es', // Confident, polished
+        description: ' ',
       },
     },
   },
   {
-    slug: 'nora',
-    name: 'Nora',
-    imageFile: 'nora.jpg',
+    slug: 'daniel',
+    name: 'Daniel',
+    imageFile: 'daniel.jpg',
     localizations: {
       en: {
-        voiceId: 'aura-2-asteria-en', // Warm and friendly
-        description:
-          "I've spent years on busy hospital floors, so I stay calm, practical, and caring. I'll break things into clear next steps, check that you're with me, and treat mistakes as just part of getting better.",
-      },
-      es: {
-        voiceId: 'aura-2-selena-es', // Smooth, expressive
-        description:
-          'He pasado años en plantas hospitalarias muy concurridas, así que me mantengo tranquila, práctica y cercana. Dividiré las cosas en pasos claros, comprobaré que me sigues y trataré los errores como parte de mejorar.',
-      },
-    },
-  },
-  {
-    slug: 'julian',
-    name: 'Julian',
-    imageFile: 'julian.jpg',
-    localizations: {
-      en: {
-        voiceId: 'aura-2-orion-en', // Deep, resonant
-        description:
-          "I'm an analytical, evidence-first thinker — I like to gather the facts and reason them through carefully. I'm soft-spoken and precise, and I'll gently nudge you to explain why an answer is right, not just guess.",
+        voiceId: 'aura-2-orpheus-en', // Rich, expressive
+        description: " ",
       },
       es: {
         voiceId: 'aura-2-nestor-es', // Assertive, professional
-        description:
-          'Soy una persona analítica a la que le gustan los hechos y razonarlos con calma. Hablo en voz baja y con precisión, y te animaré con suavidad a explicar por qué una respuesta es correcta, no solo a adivinar.',
+        description: ' ',
       },
     },
   },
   {
-    slug: 'diego',
-    name: 'Diego',
-    imageFile: 'diego.jpg',
+    slug: 'david',
+    name: 'David',
+    imageFile: 'david.jpg',
     localizations: {
       en: {
-        voiceId: 'aura-2-apollo-en', // Clear, engaging
-        description:
-          "I'm the easygoing type who learns by tinkering and explains things like I would to a friend over coffee. I keep it low-pressure, lean on plain language and quick analogies, and we'll just try things until they click.",
+        voiceId: 'aura-2-mars-en', // Smooth, patient baritone
+        description: " ",
       },
       es: {
-        voiceId: 'aura-2-javier-es', // Calm, measured
-        description:
-          'Soy de los que aprenden experimentando y te explican las cosas como a un amigo mientras tomamos un café. Lo llevo con tranquilidad, uso lenguaje sencillo y analogías rápidas, y vamos probando hasta que todo encaje.',
+        voiceId: 'aura-2-sirio-es', // Deep, resonant
+        description: 'Soy tranquilo y paciente, y me apoyo en ejemplos breves y cotidianos.',
       },
     },
-  },
+  }
 ];
