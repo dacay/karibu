@@ -7,6 +7,10 @@ export function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
+// How the current session was opened: "access" for the ID-only `/access` page,
+// absent for the regular admin/invite-link flow.
+export const LOGIN_MODE_KEY = "karibu_login_mode";
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("karibu_token");
@@ -14,9 +18,12 @@ export function getToken(): string | null {
 
 async function handleResponse<T>(res: Response, skipAuthRedirect = false): Promise<T> {
   if (res.status === 401 && typeof window !== "undefined" && !skipAuthRedirect) {
+    // Access-mode sessions are short (12h by default) and expire during normal
+    // use, so send those learners back to the page they came in through.
+    const signInPath = localStorage.getItem(LOGIN_MODE_KEY) === "access" ? "/access" : "/login";
     localStorage.removeItem("karibu_token");
     localStorage.removeItem("karibu_user");
-    window.location.href = "/login";
+    window.location.href = signInPath;
   }
 
   if (!res.ok) {
@@ -360,6 +367,8 @@ export interface TeamMember {
   firstName: string | null;
   lastName: string | null;
   phoneNumber: string | null;
+  /** Organization-issued ID — only used by orgs running access mode. */
+  externalId: string | null;
   role: "admin" | "user";
   createdAt: string;
   hasToken: boolean;
@@ -382,6 +391,14 @@ export interface InviteOneResult {
   emailSent: boolean;
 }
 
+/** Org metadata available to anonymous visitors (login and access pages). */
+export interface PublicOrg {
+  logoUpdatedAt: string | null;
+  accessModeEnabled: boolean;
+  accessIdLabel: string | null;
+  accessSessionHours: number;
+}
+
 export interface OrgConfig {
   name: string;
   subdomain: string;
@@ -392,6 +409,10 @@ export interface OrgConfig {
   defaultAvatarId: string;
   restrictToKnowledgeBase: boolean;
   knowledgeRedirectMessage: string | null;
+  // Access mode (`/access` page). Read-only — set in SQL, not from the admin UI.
+  accessModeEnabled: boolean;
+  accessIdLabel: string | null;
+  accessSessionHours: number;
   logoUpdatedAt: string | null;
 }
 
@@ -514,6 +535,13 @@ export const api = {
       request<LoginResponse>("/auth/login", {
         method: "POST",
         body: JSON.stringify(body),
+      }),
+    // ID-only sign-in used by the `/access` page. The backend rejects it unless
+    // the organization has access mode enabled and the ID matches a learner.
+    accessLogin: (externalId: string) =>
+      request<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ externalId }),
       }),
   },
   documents: {
@@ -725,6 +753,7 @@ export const api = {
       firstName: string | null;
       lastName: string | null;
       phoneNumber: string | null;
+      externalId?: string | null;
       sendEmail: boolean;
     }) =>
       request<InviteOneResult>("/team/invite-one", {
@@ -739,7 +768,7 @@ export const api = {
       request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
     remove: (userId: string) =>
       request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
-    updateMember: (userId: string, body: { firstName: string | null; lastName: string | null; phoneNumber: string | null }) =>
+    updateMember: (userId: string, body: { firstName: string | null; lastName: string | null; phoneNumber: string | null; externalId?: string | null }) =>
       request<{ success: boolean }>(`/team/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -759,7 +788,7 @@ export const api = {
       }),
   },
   org: {
-    getPublic: () => request<{ logoUpdatedAt: string | null }>("/org/public"),
+    getPublic: () => request<PublicOrg>("/org/public"),
     getConfig: () => request<OrgConfig>("/org/config"),
     updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string; restrictToKnowledgeBase?: boolean; knowledgeRedirectMessage?: string | null }) =>
       request<OrgConfig>("/org/config", {

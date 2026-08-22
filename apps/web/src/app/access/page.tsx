@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useLogo } from "@/hooks/useLogo";
 import { useOrgPublic, accessIdLabel } from "@/hooks/useOrgPublic";
@@ -13,27 +12,50 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 
-export default function LoginPage() {
-  const { login } = useAuth();
-  const { lightSrc, darkSrc, isLoading } = useLogo();
-  const { org } = useOrgPublic();
+/**
+ * ID-only sign-in page for organizations running access mode: a learner enters
+ * the ID their organization issued them (e.g. a UCSF ID) and nothing else.
+ * The page does not exist for other organizations — they are sent to /login,
+ * and the backend rejects ID logins for them regardless.
+ */
+export default function AccessPage() {
+  const { accessLogin } = useAuth();
+  const { org, isLoading: orgLoading } = useOrgPublic();
+  const { lightSrc, darkSrc, isLoading: logoLoading } = useLogo();
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [externalId, setExternalId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+
+  const enabled = org?.accessModeEnabled ?? false;
+  const label = accessIdLabel(org);
+  const sessionHours = org?.accessSessionHours ?? 12;
+
+  useEffect(() => {
+    if (!orgLoading && !enabled) {
+      router.replace("/login");
+    }
+  }, [orgLoading, enabled, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsPending(true);
     try {
-      await login({ email: email.trim(), password: password.trim() });
+      await accessLogin(externalId.trim());
       router.replace("/");
-    } catch (err) {
-      setError("Invalid email or password.");
+    } catch {
+      setError(`We could not find that ${label}. Check it and try again.`);
       setIsPending(false);
     }
+  }
+
+  if (orgLoading || !enabled) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-8" />
+      </div>
+    );
   }
 
   return (
@@ -42,7 +64,7 @@ export default function LoginPage() {
         <CardContent className="px-8 pt-8 pb-8">
           <div className="mb-6 flex justify-center">
             <div className="relative w-36 h-14">
-              {!isLoading && (
+              {!logoLoading && (
                 <>
                   <Image
                     src={lightSrc}
@@ -66,49 +88,37 @@ export default function LoginPage() {
           </div>
 
           <div className="mb-5 text-center">
-            <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-            <p className="mt-1 text-sm text-muted-foreground">For organization administrators only</p>
+            <h1 className="text-xl font-semibold tracking-tight">Get started</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Enter your {label} to continue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="externalId">{label}</Label>
               <Input
-                id="email"
-                type="email"
+                id="externalId"
+                type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={externalId}
+                onChange={(e) => setExternalId(e.target.value)}
               />
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <Button type="submit" disabled={isPending} className="w-full">
+            <Button type="submit" disabled={isPending || !externalId.trim()} className="w-full">
               {isPending && <Spinner className="mr-2" />}
-              {isPending ? "Signing in…" : "Sign in"}
+              {isPending ? "Signing in…" : "Continue"}
             </Button>
           </form>
 
-          {/* Access-mode orgs only: point learners at the ID-only page. */}
-          {org?.accessModeEnabled && (
-            <p className="mt-5 text-center text-sm text-muted-foreground">
-              <Link href="/access" className="underline underline-offset-4 hover:text-foreground">
-                Sign in with your {accessIdLabel(org)}
-              </Link>
-            </p>
-          )}
+          <p className="mt-5 text-center text-xs text-muted-foreground">
+            You will stay signed in on this device for {sessionHours} hours.
+          </p>
         </CardContent>
       </Card>
     </div>

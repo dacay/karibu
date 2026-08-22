@@ -6,20 +6,27 @@ import { generateSessionId } from './crypto.js';
 import type { JWTPayload } from '../types/auth.js';
 
 /**
- * Generate a JWT token for a user
+ * Generate a JWT token for a user.
+ *
+ * `expiresInHours` overrides the JWT_EXPIRATION default for a single token —
+ * used by access-mode logins, which are deliberately short-lived because the
+ * organizational ID they are based on is not a secret.
  */
 export const generateToken = async (
   userId: string,
   role: 'admin' | 'user',
-  organizationId: string
+  organizationId: string,
+  expiresInHours?: number
 ): Promise<{ token: string; jti: string; expiresAt: Date }> => {
 
   const jti = generateSessionId();
-  const expiresInMs = ms(env.JWT_EXPIRATION as StringValue);
+  const expiresInMs = expiresInHours !== undefined
+    ? expiresInHours * 60 * 60 * 1000
+    : ms(env.JWT_EXPIRATION as StringValue);
 
-  if (typeof expiresInMs !== 'number') {
+  if (typeof expiresInMs !== 'number' || !Number.isFinite(expiresInMs) || expiresInMs <= 0) {
 
-    throw new Error(`Invalid JWT_EXPIRATION format: ${env.JWT_EXPIRATION}`);
+    throw new Error(`Invalid token expiration: ${expiresInHours ?? env.JWT_EXPIRATION}`);
   }
 
   const now = Math.floor(Date.now() / 1000);

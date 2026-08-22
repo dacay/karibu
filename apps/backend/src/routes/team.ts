@@ -7,6 +7,7 @@ import { authMiddleware, requireRole } from '../middleware/auth.js';
 import { db } from '../db/index.js';
 import { users, authTokens, userGroups, userGroupMembers } from '../db/schema.js';
 import { hashPassword, generateLoginToken } from '../utils/crypto.js';
+import { normalizeExternalId } from '../services/auth.js';
 import { sendInvitationEmail, buildOrgUrl } from '../services/email.js';
 import { logger } from '../config/logger.js';
 
@@ -34,6 +35,7 @@ teamRouter.get('/', async (c) => {
       firstName: users.firstName,
       lastName: users.lastName,
       phoneNumber: users.phoneNumber,
+      externalId: users.externalId,
       role: users.role,
       createdAt: users.createdAt,
       tokenId: authTokens.id,
@@ -63,6 +65,7 @@ teamRouter.get('/', async (c) => {
     firstName: row.firstName ?? null,
     lastName: row.lastName ?? null,
     phoneNumber: row.phoneNumber ?? null,
+    externalId: row.externalId ?? null,
     role: row.role,
     createdAt: row.createdAt,
     hasToken: !!row.tokenId,
@@ -88,6 +91,45 @@ const phoneNumberSchema = z.preprocess(
     .regex(/^\+[1-9]\d{1,14}$/, 'Phone number must be in E.164 format (e.g. +14155552671).')
     .nullable()
 );
+
+// Organization-issued ID (e.g. a UCSF ID) used by access-mode orgs as the sole
+// credential on the `/access` page. Stored normalized (see normalizeExternalId).
+// An empty string is treated as "no ID" so the field can be cleared from the UI.
+const externalIdSchema = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? null : v),
+  z
+    .string()
+    .trim()
+    .max(64)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, 'ID may only contain letters, numbers, dots, dashes and underscores.')
+    .transform(normalizeExternalId)
+    .nullable()
+);
+
+/**
+ * Reject an ID already held by a different member of the same organization —
+ * it is a login credential in access mode, so it has to point at one person.
+ * Returns true when the ID is taken by someone else, false when it is free.
+ */
+const externalIdTaken = async (
+  externalId: string,
+  organizationId: string,
+  excludeUserId?: string
+): Promise<boolean> => {
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.externalId, externalId),
+        eq(users.organizationId, organizationId)
+      )
+    )
+    .limit(1);
+
+  return !!existing && existing.id !== excludeUserId;
+}
 
 /**
  * POST /team/invite
@@ -251,6 +293,7 @@ const inviteOneSchema = z.object({
   firstName: z.string().trim().max(100).nullable().optional(),
   lastName: z.string().trim().max(100).nullable().optional(),
   phoneNumber: phoneNumberSchema.optional(),
+  externalId: externalIdSchema.optional(),
   sendEmail: z.boolean().optional().default(true),
 });
 
@@ -264,7 +307,7 @@ teamRouter.post('/invite-one', zValidator('json', inviteOneSchema), async (c) =>
 
   const auth = c.get('auth');
   const organization = c.get('organization');
-  const { email, firstName, lastName, phoneNumber, sendEmail } = c.req.valid('json');
+  const { email, firstName, lastName, phoneNumber, externalId, sendEmail } = c.req.valid('json');
 
   // The caller can opt out of sending an email; service-token callers never
   // trigger emails (they own delivery via the returned link).
@@ -281,6 +324,13 @@ teamRouter.post('/invite-one', zValidator('json', inviteOneSchema), async (c) =>
       )
     )
     .limit(1);
+
+  // Re-inviting the same person with the ID they already hold is fine — only a
+  // clash with a different member is rejected.
+  if (externalId && await externalIdTaken(externalId, auth.organizationId, existing?.id)) {
+
+    return c.json({ error: 'That ID is already assigned to another member.' }, 409);
+  }
 
   if (existing) {
 
@@ -300,6 +350,16 @@ teamRouter.post('/invite-one', zValidator('json', inviteOneSchema), async (c) =>
       const expiresAt = new Date();
       expiresAt.setFullYear(expiresAt.getFullYear() + 1);
       await db.insert(authTokens).values({ userId: existing.id, token, expiresAt });
+    }
+
+    // Re-inviting an existing member is also how an admin attaches (or changes)
+    // their organizational ID, so apply it here too.
+    if (externalId !== undefined) {
+
+      await db
+        .update(users)
+        .set({ externalId })
+        .where(eq(users.id, existing.id));
     }
 
     if (shouldSendEmail) {
@@ -333,6 +393,7 @@ teamRouter.post('/invite-one', zValidator('json', inviteOneSchema), async (c) =>
       firstName: firstName ?? null,
       lastName: lastName ?? null,
       phoneNumber: phoneNumber ?? null,
+      externalId: externalId ?? null,
     })
     .returning();
 
@@ -544,6 +605,7 @@ const updateUserSchema = z.object({
   firstName: z.string().trim().max(100).nullable(),
   lastName: z.string().trim().max(100).nullable(),
   phoneNumber: phoneNumberSchema.optional(),
+  externalId: externalIdSchema.optional(),
 });
 
 /**
@@ -556,7 +618,7 @@ teamRouter.patch('/:userId', zValidator('json', updateUserSchema), async (c) => 
 
   const auth = c.get('auth') as UserAuthContext;
   const userId = c.req.param('userId');
-  const { firstName, lastName, phoneNumber } = c.req.valid('json');
+  const { firstName, lastName, phoneNumber, externalId } = c.req.valid('json');
 
   // Verify user belongs to this organization
   const [user] = await db
@@ -582,9 +644,14 @@ teamRouter.patch('/:userId', zValidator('json', updateUserSchema), async (c) => 
     return c.json({ error: 'Cannot edit another admin\'s profile.' }, 403);
   }
 
-  // Only update phoneNumber when the key is provided, so callers that omit it
-  // (e.g. older clients) leave the existing value untouched.
-  const updates: { firstName: string | null; lastName: string | null; phoneNumber?: string | null } = {
+  // Only update phoneNumber and externalId when the key is provided, so callers
+  // that omit them (e.g. older clients) leave the existing values untouched.
+  const updates: {
+    firstName: string | null;
+    lastName: string | null;
+    phoneNumber?: string | null;
+    externalId?: string | null;
+  } = {
     firstName: firstName ?? null,
     lastName: lastName ?? null,
   };
@@ -592,6 +659,16 @@ teamRouter.patch('/:userId', zValidator('json', updateUserSchema), async (c) => 
   if (phoneNumber !== undefined) {
 
     updates.phoneNumber = phoneNumber;
+  }
+
+  if (externalId !== undefined) {
+
+    if (externalId && await externalIdTaken(externalId, auth.organizationId, userId)) {
+
+      return c.json({ error: 'That ID is already assigned to another member.' }, 409);
+    }
+
+    updates.externalId = externalId;
   }
 
   await db

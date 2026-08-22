@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type LoginResponse } from "@/lib/api";
+import { api, LOGIN_MODE_KEY, type LoginResponse } from "@/lib/api";
 import { getCookie, deleteCookie } from "@/lib/utils/cookie";
 
 const TOKEN_KEY = "karibu_token";
@@ -60,18 +60,37 @@ export function useAuth() {
     queryClient.setQueryData(["auth", "user"], next);
   }, [profile, user, queryClient]);
 
-  const loginMutation = useMutation({
-    mutationFn: api.auth.login,
-    onSuccess: (data) => {
+  const storeSession = useCallback(
+    (data: LoginResponse, mode: "password" | "access") => {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+
+      if (mode === "access") {
+        localStorage.setItem(LOGIN_MODE_KEY, mode);
+      } else {
+        localStorage.removeItem(LOGIN_MODE_KEY);
+      }
+
       queryClient.setQueryData(["auth", "user"], data.user);
     },
+    [queryClient]
+  );
+
+  const loginMutation = useMutation({
+    mutationFn: api.auth.login,
+    onSuccess: (data) => storeSession(data, "password"),
+  });
+
+  // ID-only sign-in from the `/access` page (access-mode organizations).
+  const accessLoginMutation = useMutation({
+    mutationFn: api.auth.accessLogin,
+    onSuccess: (data) => storeSession(data, "access"),
   });
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(LOGIN_MODE_KEY);
     queryClient.setQueryData(["auth", "user"], null);
   }, [queryClient]);
 
@@ -79,6 +98,7 @@ export function useAuth() {
     user: user ?? null,
     isLoading,
     login: loginMutation.mutateAsync,
+    accessLogin: accessLoginMutation.mutateAsync,
     logout,
   };
 }

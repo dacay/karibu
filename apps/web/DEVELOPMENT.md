@@ -61,3 +61,22 @@ Learners can flag any chat message (ML or assistant) as potentially inaccurate v
 - **DB table**: `flagged_messages` — status: `open | reviewed | dismissed`, optional `reason`
 - **Admin dashboard**: Pulsing red glow banner when open flags exist; clicking navigates to `/flagged`
 - **Admin sidebar**: "Flagged" nav item with live red badge showing open count
+
+## ID-Only Access Page
+
+Organizations running access mode (`accessModeEnabled` on the org — see [Backend DEVELOPMENT.md](../backend/DEVELOPMENT.md#id-only-access-mode)) get `/access`: a sign-in page whose only field is the ID their institution issued the learner (e.g. a UCSF ID). It is deliberately near-identical to `/login`, minus the password.
+
+- **Page**: `src/app/access/page.tsx`. It reads `GET /org/public` (via `useOrgPublic`) and **redirects to `/login` when the org does not have access mode on**, so the page effectively does not exist for anyone else. The backend rejects ID logins for those orgs regardless — the redirect is UX, not the control.
+- **Field label**: from `accessIdLabel` on the org, falling back to "ID" (`accessIdLabel()` in `src/hooks/useOrgPublic.ts`). Nothing in the frontend hard-codes "UCSF".
+- **Sign-in**: `useAuth().accessLogin(externalId)` → `POST /auth/login` with `{ externalId }`. It stores the same token/user as a password login, plus `karibu_login_mode = "access"` in localStorage.
+- **Session expiry**: access sessions are short (12h by default). `handleResponse` in `src/lib/api.ts` reads `karibu_login_mode` so a 401 sends these learners back to `/access` rather than the admin `/login`.
+- **Discoverability**: `/login` shows a "Sign in with your {label}" link when the org has access mode on, and nothing otherwise. `/` still redirects unauthenticated visitors to `/login` — hand learners the `/access` URL directly.
+
+### Admin side (Team page)
+
+`useAccessMode()` (`src/hooks/useAccessMode.ts`) reads the flag off the shared `["org", "config"]` query. When it is on, the Team section shows the member's ID:
+
+- an optional ID field in the single-invite form and in the edit-member dialog (clearing it revokes that person's access-page entry),
+- the ID next to the member's email in the list, and searchable alongside email and name.
+
+All of it is hidden for other orgs, and the payload key is omitted entirely so stored values are never touched. Client-side validation (`isValidExternalId`) mirrors the backend's schema; duplicates come back from the API as a 409.

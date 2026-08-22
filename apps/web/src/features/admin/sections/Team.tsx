@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, type TeamMember, type InviteResult, type UserGroup } from "@/lib/api";
+import { useAccessMode } from "@/hooks/useAccessMode";
 import { LearnerDetailView } from "./LearnerDetail";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -104,6 +105,12 @@ interface InviteFormProps {
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+// Mirrors the backend's externalIdSchema. Empty means "no ID", which is valid.
+function isValidExternalId(externalId: string): boolean {
+  const trimmed = externalId.trim();
+  return trimmed === "" || /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(trimmed);
 }
 
 function InviteForm({ onClose }: InviteFormProps) {
@@ -310,10 +317,12 @@ interface SingleInviteFormProps {
 
 function SingleInviteForm({ onClose }: SingleInviteFormProps) {
   const queryClient = useQueryClient();
+  const { enabled: accessMode, label: idLabel } = useAccessMode();
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [externalId, setExternalId] = useState("");
   const [sendEmail, setSendEmail] = useState(true);
   const [result, setResult] = useState<{ link: string; alreadyExisted: boolean; emailSent: boolean } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -325,6 +334,8 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
         firstName: firstName.trim() || null,
         lastName: lastName.trim() || null,
         phoneNumber: phoneNumber || null,
+        // Only sent for access-mode orgs — the field is hidden otherwise.
+        ...(accessMode ? { externalId: externalId.trim() || null } : {}),
         sendEmail,
       }),
     onSuccess: (data) => {
@@ -336,7 +347,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (isValidEmail(email) && phoneValid) {
+    if (isValidEmail(email) && phoneValid && externalIdValid) {
       inviteMutation.mutate();
     }
   };
@@ -351,6 +362,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
 
   const emailValid = isValidEmail(email);
   const phoneValid = !phoneNumber || isValidPhoneNumber(phoneNumber);
+  const externalIdValid = isValidExternalId(externalId);
 
   return (
     <Card className="border-dashed">
@@ -407,6 +419,26 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
                 <p className="text-xs text-destructive">Enter a valid phone number.</p>
               )}
             </div>
+            {accessMode && (
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">{idLabel}</label>
+                <Input
+                  placeholder={idLabel}
+                  value={externalId}
+                  onChange={(e) => setExternalId(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {externalId && !externalIdValid && (
+                  <p className="text-xs text-destructive">
+                    Use letters, numbers, dots, dashes or underscores only.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Lets this person sign in on the access page with their {idLabel}.
+                </p>
+              </div>
+            )}
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <Checkbox
                 checked={sendEmail}
@@ -418,7 +450,7 @@ function SingleInviteForm({ onClose }: SingleInviteFormProps) {
               <p className="text-sm text-destructive">{(inviteMutation.error as Error).message}</p>
             )}
             <div className="flex gap-2">
-              <Button type="submit" size="sm" disabled={inviteMutation.isPending || !emailValid || !phoneValid}>
+              <Button type="submit" size="sm" disabled={inviteMutation.isPending || !emailValid || !phoneValid || !externalIdValid}>
                 {inviteMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
                 {sendEmail ? "Send invitation" : "Add member"}
               </Button>
@@ -558,11 +590,13 @@ interface MemberRowProps {
   isLast: boolean;
   isPending: boolean;
   canEditName: boolean;
+  /** Access-mode orgs show the member's organizational ID alongside their email. */
+  showExternalId: boolean;
   onAction: (action: "resend" | "regenerate" | "remove" | "copyLink" | "editName", id: string) => void;
   copiedUserId: string | null;
 }
 
-function MemberRow({ member, isLast, isPending, canEditName, onAction, copiedUserId }: MemberRowProps) {
+function MemberRow({ member, isLast, isPending, canEditName, showExternalId, onAction, copiedUserId }: MemberRowProps) {
   const router = useRouter();
   const isClickable = member.role !== "admin";
   const displayName = [member.firstName, member.lastName].filter(Boolean).join(" ");
@@ -591,6 +625,12 @@ function MemberRow({ member, isLast, isPending, canEditName, onAction, copiedUse
                 <>
                   <span className="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
                   <span className="shrink-0">{member.phoneNumber}</span>
+                </>
+              )}
+              {showExternalId && member.externalId && (
+                <>
+                  <span className="shrink-0 text-muted-foreground/60" aria-hidden="true">·</span>
+                  <span className="shrink-0 font-mono">{member.externalId}</span>
                 </>
               )}
             </div>
@@ -625,6 +665,7 @@ const MEMBERS_PER_PAGE = 10;
 
 function MembersTab() {
   const queryClient = useQueryClient();
+  const { enabled: accessMode, label: idLabel } = useAccessMode();
   const [inviteMode, setInviteMode] = useState<"single" | "bulk" | null>(null);
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
@@ -635,6 +676,7 @@ function MembersTab() {
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [editPhoneNumber, setEditPhoneNumber] = useState("");
+  const [editExternalId, setEditExternalId] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["team"],
@@ -682,8 +724,8 @@ function MembersTab() {
   });
 
   const updateMemberMutation = useMutation({
-    mutationFn: ({ userId, firstName, lastName, phoneNumber }: { userId: string; firstName: string | null; lastName: string | null; phoneNumber: string | null }) =>
-      api.team.updateMember(userId, { firstName, lastName, phoneNumber }),
+    mutationFn: ({ userId, firstName, lastName, phoneNumber, externalId }: { userId: string; firstName: string | null; lastName: string | null; phoneNumber: string | null; externalId?: string | null }) =>
+      api.team.updateMember(userId, { firstName, lastName, phoneNumber, externalId }),
     onSuccess: () => {
       setEditingMember(null);
       queryClient.invalidateQueries({ queryKey: ["team"] });
@@ -704,6 +746,7 @@ function MembersTab() {
         setEditFirstName(member.firstName ?? "");
         setEditLastName(member.lastName ?? "");
         setEditPhoneNumber(member.phoneNumber ?? "");
+        setEditExternalId(member.externalId ?? "");
       }
       return;
     }
@@ -730,13 +773,18 @@ function MembersTab() {
 
   const allMembers = data?.users ?? [];
   const editPhoneValid = !editPhoneNumber || isValidPhoneNumber(editPhoneNumber);
+  const editExternalIdValid = isValidExternalId(editExternalId);
   const query = search.toLowerCase().trim();
 
   // Filter by search (email or name)
   const filtered = query
     ? allMembers.filter((m) => {
         const name = [m.firstName, m.lastName].filter(Boolean).join(" ").toLowerCase();
-        return m.email.toLowerCase().includes(query) || name.includes(query);
+        return (
+          m.email.toLowerCase().includes(query) ||
+          name.includes(query) ||
+          (m.externalId?.toLowerCase().includes(query) ?? false)
+        );
       })
     : allMembers;
 
@@ -810,12 +858,14 @@ function MembersTab() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (editingMember && editPhoneValid) {
+              if (editingMember && editPhoneValid && editExternalIdValid) {
                 updateMemberMutation.mutate({
                   userId: editingMember.id,
                   firstName: editFirstName.trim() || null,
                   lastName: editLastName.trim() || null,
                   phoneNumber: editPhoneNumber || null,
+                  // Omitted for non-access-mode orgs so the stored value is left alone.
+                  ...(accessMode ? { externalId: editExternalId.trim() || null } : {}),
                 });
               }
             }}
@@ -852,11 +902,31 @@ function MembersTab() {
                 <p className="text-xs text-destructive">Enter a valid phone number.</p>
               )}
             </div>
+            {accessMode && editingMember?.role === "user" && (
+              <div className="space-y-1.5">
+                <label className="text-sm text-muted-foreground">{idLabel}</label>
+                <Input
+                  placeholder={idLabel}
+                  value={editExternalId}
+                  onChange={(e) => setEditExternalId(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {editExternalId && !editExternalIdValid && (
+                  <p className="text-xs text-destructive">
+                    Use letters, numbers, dots, dashes or underscores only.
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Lets this person sign in on the access page with their {idLabel}. Clear it to revoke that.
+                </p>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={() => setEditingMember(null)}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={updateMemberMutation.isPending || !editPhoneValid}>
+              <Button type="submit" size="sm" disabled={updateMemberMutation.isPending || !editPhoneValid || !editExternalIdValid}>
                 {updateMemberMutation.isPending && <Spinner className="mr-1.5 size-3.5" />}
                 Save
               </Button>
@@ -940,6 +1010,7 @@ function MembersTab() {
                           isLast={i === pageItems.length - 1}
                           isPending={pendingUserId === member.id}
                           canEditName={canEditName}
+                          showExternalId={accessMode}
                           onAction={handleAction}
                           copiedUserId={copiedUserId}
                         />

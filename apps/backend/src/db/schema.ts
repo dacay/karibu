@@ -51,6 +51,20 @@ export const organizations = pgTable('organizations', {
   // Pilot-era toggle with no admin UI — set directly in SQL. Revisit (and likely
   // replace with a proper per-org language policy) when multi-language ships fully.
   allowLanguageSelection: boolean('allow_language_selection').notNull().default(true),
+  // ID-only access mode: when true the org exposes a `/access` page where a
+  // learner signs in with nothing but their organizational ID (users.external_id).
+  // There is no secret involved — the ID alone is the credential — so this is
+  // only appropriate for orgs that accept that trade-off (UCSF pilot). Sessions
+  // opened this way are short-lived (see accessSessionHours). Off by default;
+  // no admin UI — set directly in SQL.
+  accessModeEnabled: boolean('access_mode_enabled').notNull().default(false),
+  // What the org calls that ID, shown as the field label on the access page
+  // (e.g. 'UCSF ID'). Null falls back to a generic 'ID'.
+  accessIdLabel: text('access_id_label'),
+  // Session lifetime for access-mode logins, in hours. Deliberately short
+  // because the ID alone is not a secret; overrides JWT_EXPIRATION for those
+  // logins only (password and invite-link logins keep the env default).
+  accessSessionHours: integer('access_session_hours').notNull().default(12),
   logoUpdatedAt: timestamp('logo_updated_at'),
   ...timestamps,
 });
@@ -73,9 +87,15 @@ export const users = pgTable('users', {
   fontSize: fontSizeEnum('font_size').notNull().default('base'),
   // Set the first time a learner completes or dismisses onboarding; null = never seen it
   onboardingCompletedAt: timestamp('onboarding_completed_at'),
+  // Organization-issued identifier (e.g. a UCSF ID), set by admins. Only used by
+  // orgs running access mode, where it is the sole credential on the `/access`
+  // page. Null for everyone else. Unique per organization (Postgres allows
+  // multiple nulls under a unique constraint).
+  externalId: text('external_id'),
   ...timestamps,
 }, (table) => [
   unique('users_email_org_unique').on(table.email, table.organizationId),
+  unique('users_external_id_org_unique').on(table.externalId, table.organizationId),
 ]);
 
 // Auth sessions table - tracks active JWT tokens for revocation
