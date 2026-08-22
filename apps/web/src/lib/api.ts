@@ -7,8 +7,11 @@ export function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
-// How the current session was opened: "access" for the ID-only `/access` page,
-// absent for the regular admin/invite-link flow.
+// How this device signs in: "access" for the ID-only `/access` page, absent for
+// the regular admin/invite-link flow. Deliberately outlives the session it was
+// set by — on a shared device (a ward phone with an /access shortcut) an expired
+// session must lead back to the ID page, not to the admin login. A password
+// login clears it, so a device that changes hands corrects itself.
 export const LOGIN_MODE_KEY = "karibu_login_mode";
 
 export function getToken(): string | null {
@@ -16,11 +19,40 @@ export function getToken(): string | null {
   return localStorage.getItem("karibu_token");
 }
 
+/**
+ * Where a signed-out visitor on this device belongs. Access-mode sessions are
+ * short by design, so expiry is the normal way back here.
+ */
+export function getSignInPath(): string {
+  if (typeof window === "undefined") return "/login";
+  return localStorage.getItem(LOGIN_MODE_KEY) === "access" ? "/access" : "/login";
+}
+
+/**
+ * True when a stored JWT is past its `exp`. Read client-side purely to route an
+ * expired session to the right sign-in page without first bouncing off a 401 —
+ * the backend remains the only authority on whether a token is actually valid.
+ */
+export function isTokenExpired(token: string): boolean {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return false;
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const { exp } = JSON.parse(atob(padded)) as { exp?: number };
+
+    return typeof exp === "number" && exp * 1000 <= Date.now();
+  } catch {
+    // Unreadable token: let the API be the judge rather than signing the user out.
+    return false;
+  }
+}
+
 async function handleResponse<T>(res: Response, skipAuthRedirect = false): Promise<T> {
   if (res.status === 401 && typeof window !== "undefined" && !skipAuthRedirect) {
-    // Access-mode sessions are short (12h by default) and expire during normal
-    // use, so send those learners back to the page they came in through.
-    const signInPath = localStorage.getItem(LOGIN_MODE_KEY) === "access" ? "/access" : "/login";
+    // Send learners back to the page they came in through, not the admin login.
+    const signInPath = getSignInPath();
     localStorage.removeItem("karibu_token");
     localStorage.removeItem("karibu_user");
     window.location.href = signInPath;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useLogo } from "@/hooks/useLogo";
 import { useOrgPublic, accessIdLabel } from "@/hooks/useOrgPublic";
@@ -118,6 +119,14 @@ export default function AccessPage() {
 
           <p className="mt-5 text-center text-xs text-muted-foreground">
             You will stay signed in on this device for {sessionHours} hours.
+          </p>
+
+          {/* On a device marked for access mode every signed-out visit lands here,
+              so administrators need a way through to their own sign-in. */}
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            <Link href="/login" className="underline underline-offset-4 hover:text-foreground">
+              Administrator sign-in
+            </Link>
           </p>
         </CardContent>
       </Card>

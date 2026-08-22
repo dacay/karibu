@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { getSignInPath } from "@/lib/api";
 import { AdminRoot } from "@/features/admin";
 import { LearnerRoot } from "@/features/learner";
 import { Spinner } from "@/components/ui/spinner";
@@ -13,7 +14,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace("/login");
+      router.replace(getSignInPath());
     }
   }, [user, isLoading, router]);
 

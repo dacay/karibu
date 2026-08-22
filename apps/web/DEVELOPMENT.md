@@ -69,8 +69,20 @@ Organizations running access mode (`accessModeEnabled` on the org — see [Backe
 - **Page**: `src/app/access/page.tsx`. It reads `GET /org/public` (via `useOrgPublic`) and **redirects to `/login` when the org does not have access mode on**, so the page effectively does not exist for anyone else. The backend rejects ID logins for those orgs regardless — the redirect is UX, not the control.
 - **Field label**: from `accessIdLabel` on the org, falling back to "ID" (`accessIdLabel()` in `src/hooks/useOrgPublic.ts`). Nothing in the frontend hard-codes "UCSF".
 - **Sign-in**: `useAuth().accessLogin(externalId)` → `POST /auth/login` with `{ externalId }`. It stores the same token/user as a password login, plus `karibu_login_mode = "access"` in localStorage.
-- **Session expiry**: access sessions are short (12h by default). `handleResponse` in `src/lib/api.ts` reads `karibu_login_mode` so a 401 sends these learners back to `/access` rather than the admin `/login`.
-- **Discoverability**: `/login` shows a "Sign in with your {label}" link when the org has access mode on, and nothing otherwise. `/` still redirects unauthenticated visitors to `/login` — hand learners the `/access` URL directly.
+- **Discoverability**: `/login` shows a "Sign in with your {label}" link when the org has access mode on, and `/access` links back to the admin sign-in. `/` sends a *never-signed-in* visitor to `/login` — learners get the `/access` URL as a home-screen shortcut.
+
+### Where an expired session lands
+
+`/access` is meant to be a shortcut on a shared ward phone, and its sessions are short (12h), so **expiry is the ordinary way a learner returns to a sign-in page** — and it must be the ID page, not the admin login.
+
+Two pieces make that work:
+
+- **`karibu_login_mode`** describes the *device*, not the session. It is set by an access sign-in and deliberately survives both expiry and an explicit sign-out, so the next visitor to that phone still lands on `/access`. A password sign-in clears it, so a device that changes hands corrects itself. `getSignInPath()` in `src/lib/api.ts` reads it, and every signed-out redirect goes through it — the four page guards (`/`, `/[section]`, `/chat`, `/ml/[id]`) and the 401 handler alike. **Never hard-code `/login` in a redirect.**
+- **`isTokenExpired()`** lets `loadStoredAuth` (in `useAuth`) treat an expired stored JWT as signed out, instead of rendering the app and waiting for the first request to 401. Without it, a learner reopening the app the next morning gets a flash of a broken screen before the redirect. It only decodes `exp` for routing — the backend stays the sole authority on validity.
+
+A signed-in learner who reopens the shortcut mid-session gets the ID form again rather than resuming, which is deliberate: on a shared phone, silently resuming would drop the next nurse into the previous nurse's account.
+
+If `GET /org/public` cannot be reached, `/access` fails closed and redirects to `/login`.
 
 ### Admin side (Team page)
 

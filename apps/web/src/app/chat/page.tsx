@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface, CHAT_ENDPOINTS } from "@/features/chat";
 import type { ChatAvatar } from "@/features/chat";
-import { api, localizationFor } from "@/lib/api";
+import { api, localizationFor, getSignInPath } from "@/lib/api";
 import { getVersionedAssetUrl } from "@/lib/assets";
 
 export default function ChatPage() {
@@ -22,7 +22,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace("/login");
+      router.replace(getSignInPath());
     }
   }, [user, isLoading, router]);
 
