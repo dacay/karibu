@@ -188,16 +188,33 @@ The backend IAM user needs access to all three buckets plus CloudFront invalidat
 Note: KMS permissions must reference the KMS key ARN, not the S3 bucket ARN.
 
 ### ChromaDB Pipeline
-The ChromaDB service (`src/services/chromadb.ts`) is fully built with `addDocumentChunks`, `deleteDocumentChunks`, and `queryDocuments`, but is **not yet wired into the document upload route**. Documents are uploaded to S3 and recorded in the DB with status `uploaded` — parsing, chunking, and embedding into ChromaDB still need to be connected.
+
+`POST /documents/upload` inserts the `documents` row, uploads the file to the docs bucket, and then kicks off `processDocument()` from `src/services/document-processor.ts` **fire-and-forget** — the route returns 201 without waiting. The document's `status` column is the only place processing is observable: `uploaded` → `processing` → `processed` | `failed`.
+
+`processDocument()`:
+1. Downloads the object from the docs bucket.
+2. Extracts text — `pdfjs-dist` (legacy build, with `isEvalSupported`, `useWorkerFetch`, auto-fetch and streaming all off) for PDF, `mammoth` for `.doc`/`.docx`, raw UTF-8 for `text/plain` and `text/markdown`. **Empty extracted text is treated as a failure** — there is no OCR, so an image-only or scanned PDF ends as `failed`.
+3. Chunks at `CHUNK_SIZE = 500` characters with `CHUNK_OVERLAP = 100` (~20% overlap to preserve cross-boundary context; 500 chars is ~100–125 tokens, comfortably inside small embedding models' limits).
+4. Embeds the chunks in one batched call via `embedTexts()` (`OPENAI_EMBEDDING_MODEL`, default `text-embedding-3-small`).
+5. Writes them to the documents collection through `addDocumentChunks()`, with `documentId` + `organizationId` metadata and ids of the form `${documentId}_chunk_${i}`, then records the first chunk id on `documents.chroma_document_id`.
+
+Two collections live in ChromaDB (`src/services/chromadb.ts`):
+
+- **Documents** (`CHROMA_COLLECTION_NAME`, default `karibu-documents`) — every org's chunks share one collection, isolated by a `where: { organizationId }` filter on read. Helpers: `addDocumentChunks`, `deleteDocumentChunks`, `queryDocuments`, `sampleDocumentChunks`.
+- **Karibu manual** (`CHROMA_MANUAL_COLLECTION_NAME`, default `karibu-manual`) — organization-agnostic product documentation, queried **without** an org filter and shared by every tenant. Helpers: `addManualChunks`, `deleteManualChunks`, `queryManual`. Populated by `pnpm upload-manual <path.txt> [sourceId]`, which mirrors the same chunk constants so manual and org documents chunk identically; re-running with the same `sourceId` replaces that source's chunks.
+
+Deleting a document (`DELETE /documents/:id`) removes its S3 object and its chunks via `deleteDocumentChunks(documentId)`, then the DB row. Both external deletes are **best-effort** — a failure logs a warning and the row is deleted anyway, so a failed ChromaDB delete leaves orphaned chunks behind.
+
+Because processing is asynchronous and best-effort, a failure never surfaces to the uploading admin — it lands as `status: 'failed'` on the row and an `error` log line. There is no retry and no queue.
 
 ## DNA Auto-Discovery
 
-The auto-discover feature analyzes all processed document chunks in ChromaDB and uses GPT-4o to suggest topic/subtopic structures.
+The auto-discover feature analyzes all processed document chunks in ChromaDB and uses the configured chat model (`OPENAI_CHAT_MODEL`) to suggest topic/subtopic structures.
 
 ### Flow
 1. Admin clicks "Auto-discover" in the DNA section
-2. `POST /dna/discover` samples up to 40 chunks from ChromaDB (no specific query — broad content analysis)
-3. GPT-4o analyzes the excerpts and returns 3-6 topics with 2-4 subtopics each (JSON)
+2. `POST /dna/discover` samples the org's chunks from ChromaDB with no query (broad content analysis) — up to `sampleDocumentChunks`'s cap of 800, spread across documents (see "ChromaDB Dependency" below)
+3. The model analyzes the excerpts and returns JSON: `DNA_DISCOVERY_MIN_TOPICS`–`DNA_DISCOVERY_MAX_TOPICS` topics (default 3-6) with `DNA_DISCOVERY_MIN_SUBTOPICS`–`DNA_DISCOVERY_MAX_SUBTOPICS` subtopics each (default 2-4)
 4. Topics/subtopics are inserted with `source: 'discovered', status: 'suggested'`
 5. Existing topic names (case-insensitive) are skipped to avoid duplicates
 6. Admin reviews suggestions — Accept promotes to `active`, Reject hides from list
