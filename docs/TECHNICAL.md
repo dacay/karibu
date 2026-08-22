@@ -175,7 +175,6 @@ Single file, 349 lines, ~25 tables. Highlights and the reasoning behind them:
 - Upload responds `201` immediately; processing happens after. Status on the row moves `uploaded → processing → processed | failed`.
 - Chunk size was picked to sit comfortably inside small embedding models' token limits (the comment references the 256-token ceiling of `all-MiniLM-L6-v2`); 20 % overlap preserves cross-boundary context.
 - `upload-manual.ts` deliberately **mirrors the same chunk constants** so the Karibu product manual chunks identically to org documents.
-- ⚠️ `apps/backend/DEVELOPMENT.md` still says the ChromaDB pipeline is "not yet wired into the document upload route". **That is stale** — it is wired (`routes/documents.ts:96`). Fix the doc.
 
 ### Structure: Topic → Subtopic → Value
 
@@ -192,7 +191,7 @@ Three levels, and the third exists for a specific reason: **approval must attach
 `POST /dna/discover` samples chunks broadly (no query) and asks the model for `DNA_DISCOVERY_MIN_TOPICS`–`MAX_TOPICS` topics with `MIN_SUBTOPICS`–`MAX_SUBTOPICS` each, inserted as `discovered/suggested`. Duplicate topic names (case-insensitive) are skipped.
 
 **The sampling algorithm is a deliberate piece of engineering** (`sampleDocumentChunks`, default cap **800**): a naive `get({ limit })` returns a contiguous head slice, which over-represents whichever document was inserted first and only its opening pages. Instead it fetches all of the org's chunk metadata, allocates the cap **round-robin across documents** so one large document cannot monopolize the budget, and picks each document's quota **evenly strided across its full length**, then interleaves the result so downstream truncation stays balanced.
-*(The backend doc's "samples up to 40 chunks" line predates this rewrite — the cap is 800.)*
+*(The cap is 800; the backend doc's older "up to 40 chunks" line has been corrected.)*
 
 **Suggestions are persisted immediately, not held in memory.** An admin can reload the page mid-review and lose nothing.
 
@@ -566,7 +565,11 @@ Built-in conversation patterns seeded today: **Interactive Q&A** (multiple choic
 13. **`localStorage` token storage** — XSS-exposed by design (see §4).
 14. **`ADMIN_ONLY_SECTIONS`** must be updated by hand for every new admin section, or the section leaks to learners.
 15. **Vestigial dependencies:** `@mastra/core` (instantiated, no agents), `@ai-sdk/elevenlabs` (unused — Deepgram is the TTS provider), `@vercel/analytics` alongside Mixpanel. Safe cleanup targets.
-16. **Doc drift to fix:** `apps/backend/DEVELOPMENT.md` still claims the ChromaDB pipeline is not wired into document upload (it is), and still says discovery samples "up to 40 chunks" (the cap is 800 with round-robin striding). It also references `qmd` semantic-search tooling that is not part of this repo.
+16. **Doc drift:** `apps/backend/DEVELOPMENT.md`'s ChromaDB and auto-discovery sections have been corrected. One stale reference remains in that file — an "AI Assistant Notes" section describing `qmd` semantic-search tooling that is not part of this repo.
+
+17. **Orphaned vector chunks.** `DELETE /documents/:id` deletes the S3 object and the ChromaDB chunks best-effort, then removes the DB row regardless. A failed ChromaDB delete leaves chunks that are still retrievable by search with no document row behind them, and nothing reconciles this.
+
+18. **No OCR.** Document processing treats empty extracted text as a failure, so image-only or scanned PDFs — common in facilities that scan paper policies — end as `status: 'failed'` with no fallback.
 
 ---
 
