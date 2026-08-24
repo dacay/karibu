@@ -61,3 +61,34 @@ Learners can flag any chat message (ML or assistant) as potentially inaccurate v
 - **DB table**: `flagged_messages` — status: `open | reviewed | dismissed`, optional `reason`
 - **Admin dashboard**: Pulsing red glow banner when open flags exist; clicking navigates to `/flagged`
 - **Admin sidebar**: "Flagged" nav item with live red badge showing open count
+
+## ID-Only Access Page
+
+Organizations running access mode (`externalIdLoginEnabled` on the org — see [Backend DEVELOPMENT.md](../backend/DEVELOPMENT.md#id-only-access-mode)) get `/access`: a sign-in page whose only field is the ID their institution issued the learner (e.g. a UCSF ID). It is deliberately near-identical to `/login`, minus the password.
+
+- **Page**: `src/app/access/page.tsx`. It reads `GET /org/public` (via `useOrgPublic`) and **redirects to `/login` when the org does not have access mode on**, so the page effectively does not exist for anyone else. The backend rejects ID logins for those orgs regardless — the redirect is UX, not the control.
+- **Field label**: from `externalIdLabel` on the org, falling back to "ID" (`externalIdLabelFor()` in `src/hooks/useOrgPublic.ts`). Nothing in the frontend hard-codes "UCSF".
+- **Sign-in**: `useAuth().accessLogin(externalId)` → `POST /auth/login` with `{ externalId }`. It stores the same token/user as a password login, plus `karibu_login_mode = "access"` in localStorage.
+- **Discoverability**: `/login` shows a "Sign in with your {label}" link when the org has access mode on, and `/access` links back to the admin sign-in. `/` sends a *never-signed-in* visitor to `/login` — learners get the `/access` URL as a home-screen shortcut.
+
+### Where an expired session lands
+
+`/access` is meant to be a shortcut on a shared ward phone, and its sessions are short (12h), so **expiry is the ordinary way a learner returns to a sign-in page** — and it must be the ID page, not the admin login.
+
+Two pieces make that work:
+
+- **`karibu_login_mode`** describes the *device*, not the session. It is set by an access sign-in and deliberately survives both expiry and an explicit sign-out, so the next visitor to that phone still lands on `/access`. A password sign-in clears it, so a device that changes hands corrects itself. `getSignInPath()` in `src/lib/api.ts` reads it, and every signed-out redirect goes through it — the four page guards (`/`, `/[section]`, `/chat`, `/ml/[id]`) and the 401 handler alike. **Never hard-code `/login` in a redirect.**
+- **`isTokenExpired()`** lets `loadStoredAuth` (in `useAuth`) treat an expired stored JWT as signed out, instead of rendering the app and waiting for the first request to 401. Without it, a learner reopening the app the next morning gets a flash of a broken screen before the redirect. It only decodes `exp` for routing — the backend stays the sole authority on validity.
+
+A signed-in learner who reopens the shortcut mid-session gets the ID form again rather than resuming, which is deliberate: on a shared phone, silently resuming would drop the next nurse into the previous nurse's account.
+
+If `GET /org/public` cannot be reached, `/access` fails closed and redirects to `/login`.
+
+### Admin side (Team page)
+
+`useExternalIdLogin()` (`src/hooks/useExternalIdLogin.ts`) reads the flag off the shared `["org", "config"]` query. When it is on, the Team section shows the member's ID:
+
+- an optional ID field in the single-invite form and in the edit-member dialog (clearing it revokes that person's access-page entry),
+- the ID next to the member's email in the list, and searchable alongside email and name.
+
+All of it is hidden for other orgs, and the payload key is omitted entirely so stored values are never touched. Client-side validation (`isValidExternalId`) mirrors the backend's schema; duplicates come back from the API as a 409.

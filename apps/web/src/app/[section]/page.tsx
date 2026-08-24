@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { getSignInPath } from "@/lib/api";
 import { AdminRoot } from "@/features/admin";
 import { LearnerRoot } from "@/features/learner";
 import { Spinner } from "@/components/ui/spinner";
@@ -18,7 +19,7 @@ export default function SectionPage() {
   useEffect(() => {
     if (isLoading) return;
     if (!user) {
-      router.replace("/login");
+      router.replace(getSignInPath());
     } else if (!AVATARS_ENABLED && section === "avatars") {
       router.replace("/");
     } else if (user.role === "user" && ADMIN_ONLY_SECTIONS.has(section)) {

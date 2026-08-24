@@ -232,6 +232,109 @@ export const loginWithToken = async (
 }
 
 /**
+ * Canonical form of an organization-issued ID: trimmed and upper-cased.
+ * Applied on write (admin entry) and on lookup (access login) so the unique
+ * constraint and the login comparison agree, and so case never blocks a learner.
+ */
+export const normalizeExternalId = (externalId: string): string => {
+
+  return externalId.trim().toUpperCase();
+}
+
+/**
+ * Authenticate a learner with nothing but their organization-issued ID.
+ *
+ * Only available to organizations running access mode. The ID is not a secret,
+ * so this is intentionally narrow: the org must have the flag on, the ID must
+ * already belong to a provisioned learner (no accounts are created here), and
+ * admins are excluded — an admin console is never reachable without a password.
+ * The resulting session is short-lived (organizations.external_id_session_hours).
+ */
+export const loginWithExternalId = async (
+  externalId: string,
+  organization: Organization,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<LoginResult> => {
+
+  try {
+
+    if (!organization.externalIdLoginEnabled) {
+
+      logger.debug({ organizationId: organization.id }, 'Access login attempted on an organization without access mode.');
+
+      return { success: false, error: 'Not available' };
+    }
+
+    // IDs are stored normalized (trimmed, upper-cased) so a learner typing
+    // theirs in either case still matches — see normalizeExternalId.
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.externalId, normalizeExternalId(externalId)),
+          eq(users.organizationId, organization.id)
+        )
+      )
+      .limit(1);
+
+    if (!user) {
+
+      logger.debug({ organizationId: organization.id }, 'Access login attempt with an unknown ID.');
+
+      return { success: false, error: 'ID not recognized' };
+    }
+
+    // Admins keep their password login — an ID alone must never open the admin console.
+    if (user.role !== 'user') {
+
+      logger.debug({ userId: user.id }, 'Access login attempt by a non-learner account.');
+
+      return { success: false, error: 'ID not recognized' };
+    }
+
+    const { token, jti, expiresAt } = await generateToken(
+      user.id,
+      user.role,
+      organization.id,
+      organization.externalIdSessionHours
+    );
+
+    await db.insert(authSessions).values({
+      id: jti,
+      userId: user.id,
+      expiresAt,
+      ipAddress,
+      userAgent,
+    });
+
+    logger.debug({ userId: user.id, organizationId: organization.id, expiresAt }, 'Learner logged in with an organizational ID.');
+
+    return {
+
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        organizationId: organization.id,
+        organizationName: organization.name,
+      },
+    };
+
+  } catch (err) {
+
+    logger.error({ err }, 'Login with external ID failed.');
+
+    return { success: false, error: 'Authentication failed' };
+  }
+}
+
+/**
  * Check if a JWT session is valid (not revoked).
  * Caches the result (valid or invalid) by jti; on cache miss we hit the DB.
  */

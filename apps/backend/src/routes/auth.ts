@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { loginWithPassword, loginWithToken } from '../services/auth.js';
+import { loginWithPassword, loginWithToken, loginWithExternalId } from '../services/auth.js';
 import { logger } from '../config/logger.js';
 import { capture, EVENTS } from '../utils/analytics.js';
 
@@ -10,11 +10,13 @@ const auth = new Hono();
 const loginSchema = z.union([
   z.object({ email: z.string().email(), password: z.string().min(8) }),
   z.object({ token: z.string().min(1) }),
+  z.object({ externalId: z.string().trim().min(1).max(64) }),
 ]);
 
 /**
  * POST /auth/login
- * Dual login mechanism: email+password OR token
+ * Login mechanisms: email+password (admins), invite token, or organizational
+ * ID (learners, access-mode organizations only).
  */
 auth.post('/login', zValidator('json', loginSchema), async (c) => {
 
@@ -42,6 +44,29 @@ auth.post('/login', zValidator('json', loginSchema), async (c) => {
           role: result.user.role,
           organizationId: result.user.organizationId,
           props: { login_method: 'token' },
+        });
+      }
+
+      return c.json({ token: result.token, user: result.user });
+    }
+
+    if ('externalId' in body) {
+
+      logger.debug('Processing access-mode ID login...');
+
+      const result = await loginWithExternalId(body.externalId, organization, ipAddress, userAgent);
+
+      if (!result.success) {
+        return c.json({ error: result.error }, 401);
+      }
+
+      if (result.user) {
+        capture({
+          distinctId: result.user.id,
+          event: EVENTS.userLoggedIn,
+          role: result.user.role,
+          organizationId: result.user.organizationId,
+          props: { login_method: 'external_id' },
         });
       }
 

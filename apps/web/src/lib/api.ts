@@ -7,16 +7,55 @@ export function getApiBaseUrl(): string {
 
 const BASE_URL = getApiBaseUrl();
 
+// How this device signs in: "access" for the ID-only `/access` page, absent for
+// the regular admin/invite-link flow. Deliberately outlives the session it was
+// set by — on a shared device (a ward phone with an /access shortcut) an expired
+// session must lead back to the ID page, not to the admin login. A password
+// login clears it, so a device that changes hands corrects itself.
+export const LOGIN_MODE_KEY = "karibu_login_mode";
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("karibu_token");
 }
 
+/**
+ * Where a signed-out visitor on this device belongs. Access-mode sessions are
+ * short by design, so expiry is the normal way back here.
+ */
+export function getSignInPath(): string {
+  if (typeof window === "undefined") return "/login";
+  return localStorage.getItem(LOGIN_MODE_KEY) === "access" ? "/access" : "/login";
+}
+
+/**
+ * True when a stored JWT is past its `exp`. Read client-side purely to route an
+ * expired session to the right sign-in page without first bouncing off a 401 —
+ * the backend remains the only authority on whether a token is actually valid.
+ */
+export function isTokenExpired(token: string): boolean {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return false;
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const { exp } = JSON.parse(atob(padded)) as { exp?: number };
+
+    return typeof exp === "number" && exp * 1000 <= Date.now();
+  } catch {
+    // Unreadable token: let the API be the judge rather than signing the user out.
+    return false;
+  }
+}
+
 async function handleResponse<T>(res: Response, skipAuthRedirect = false): Promise<T> {
   if (res.status === 401 && typeof window !== "undefined" && !skipAuthRedirect) {
+    // Send learners back to the page they came in through, not the admin login.
+    const signInPath = getSignInPath();
     localStorage.removeItem("karibu_token");
     localStorage.removeItem("karibu_user");
-    window.location.href = "/login";
+    window.location.href = signInPath;
   }
 
   if (!res.ok) {
@@ -360,6 +399,8 @@ export interface TeamMember {
   firstName: string | null;
   lastName: string | null;
   phoneNumber: string | null;
+  /** Organization-issued ID — only used by orgs running access mode. */
+  externalId: string | null;
   role: "admin" | "user";
   createdAt: string;
   hasToken: boolean;
@@ -382,6 +423,14 @@ export interface InviteOneResult {
   emailSent: boolean;
 }
 
+/** Org metadata available to anonymous visitors (login and access pages). */
+export interface PublicOrg {
+  logoUpdatedAt: string | null;
+  externalIdLoginEnabled: boolean;
+  externalIdLabel: string | null;
+  externalIdSessionHours: number;
+}
+
 export interface OrgConfig {
   name: string;
   subdomain: string;
@@ -392,6 +441,10 @@ export interface OrgConfig {
   defaultAvatarId: string;
   restrictToKnowledgeBase: boolean;
   knowledgeRedirectMessage: string | null;
+  // Access mode (`/access` page). Read-only — set in SQL, not from the admin UI.
+  externalIdLoginEnabled: boolean;
+  externalIdLabel: string | null;
+  externalIdSessionHours: number;
   logoUpdatedAt: string | null;
 }
 
@@ -514,6 +567,13 @@ export const api = {
       request<LoginResponse>("/auth/login", {
         method: "POST",
         body: JSON.stringify(body),
+      }),
+    // ID-only sign-in used by the `/access` page. The backend rejects it unless
+    // the organization has access mode enabled and the ID matches a learner.
+    accessLogin: (externalId: string) =>
+      request<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ externalId }),
       }),
   },
   documents: {
@@ -725,6 +785,7 @@ export const api = {
       firstName: string | null;
       lastName: string | null;
       phoneNumber: string | null;
+      externalId?: string | null;
       sendEmail: boolean;
     }) =>
       request<InviteOneResult>("/team/invite-one", {
@@ -739,7 +800,7 @@ export const api = {
       request<{ success: boolean }>(`/team/${userId}/regenerate-token`, { method: "POST" }),
     remove: (userId: string) =>
       request<{ success: boolean }>(`/team/${userId}`, { method: "DELETE" }),
-    updateMember: (userId: string, body: { firstName: string | null; lastName: string | null; phoneNumber: string | null }) =>
+    updateMember: (userId: string, body: { firstName: string | null; lastName: string | null; phoneNumber: string | null; externalId?: string | null }) =>
       request<{ success: boolean }>(`/team/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -759,7 +820,7 @@ export const api = {
       }),
   },
   org: {
-    getPublic: () => request<{ logoUpdatedAt: string | null }>("/org/public"),
+    getPublic: () => request<PublicOrg>("/org/public"),
     getConfig: () => request<OrgConfig>("/org/config"),
     updateConfig: (body: { name?: string; pronunciation?: string | null; learnerTerm?: string; learnerTermPlural?: string; expirationIntervalHours?: number; defaultAvatarId?: string; restrictToKnowledgeBase?: boolean; knowledgeRedirectMessage?: string | null }) =>
       request<OrgConfig>("/org/config", {

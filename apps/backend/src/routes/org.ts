@@ -22,6 +22,11 @@ org.get('/public', async (c) => {
 
   return c.json({
     logoUpdatedAt: organization.logoUpdatedAt ? organization.logoUpdatedAt.toISOString() : null,
+    // Drives whether the `/access` page exists for this org, and how its single
+    // field is labelled. Safe to expose: it reveals no more than visiting the page.
+    externalIdLoginEnabled: organization.externalIdLoginEnabled,
+    externalIdLabel: organization.externalIdLabel,
+    externalIdSessionHours: organization.externalIdSessionHours,
   });
 });
 
@@ -70,6 +75,11 @@ org.get('/config', async (c) => {
         defaultAvatarId: organizations.defaultAvatarId,
         restrictToKnowledgeBase: organizations.restrictToKnowledgeBase,
         knowledgeRedirectMessage: organizations.knowledgeRedirectMessage,
+        // Read-only here — access mode is a pilot toggle set in SQL. Returned so
+        // the admin UI can show ID fields on the Team page when it is on.
+        externalIdLoginEnabled: organizations.externalIdLoginEnabled,
+        externalIdLabel: organizations.externalIdLabel,
+        externalIdSessionHours: organizations.externalIdSessionHours,
         logoUpdatedAt: organizations.logoUpdatedAt,
       })
       .from(organizations)

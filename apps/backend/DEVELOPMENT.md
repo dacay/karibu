@@ -426,6 +426,80 @@ When `sendEmail` is false (or the caller is a service token) no invitation email
 
 `PATCH /team/:userId` updates `firstName`, `lastName`, and `phoneNumber`. Phone is stored in E.164 format; an empty string clears it. `phoneNumber` is optional in the payload, so a caller that omits the key leaves the stored value untouched. Admins may edit any non-admin member and their own profile, but not another admin's.
 
+## ID-Only Access Mode
+
+Some organizations (UCSF pilot) want their learners to reach the app without
+credentials at all: they type the ID their institution already issued them and
+they are in. This is deliberately not authentication — the ID is not a secret —
+so it is opt-in per organization and everything about it is narrowed down.
+
+### Data model
+
+`organizations`:
+- `external_id_login_enabled` (bool, default `false`) — turns the whole feature on for
+  the org, including the frontend's `/access` page.
+- `external_id_label` (text, nullable) — what the org calls the ID, used as the
+  field label (e.g. `UCSF ID`). Null falls back to a generic "ID".
+- `external_id_session_hours` (int, default `12`) — session lifetime for access-mode
+  logins only.
+
+`users`:
+- `external_id` (text, nullable) — the organization-issued ID, unique per
+  organization (`users_external_id_org_unique`). Null for everyone else, so the
+  same ID may exist in two different organizations.
+
+There is no admin UI for the org-level flags — like `allow_language_selection`,
+they are pilot-era toggles set directly in SQL:
+
+```sql
+UPDATE organizations
+SET external_id_login_enabled = true, external_id_label = 'UCSF ID', external_id_session_hours = 12
+WHERE subdomain = 'ucsf';
+```
+
+### Login flow
+
+`POST /auth/login` takes a third body shape alongside email+password and token:
+`{ "externalId": "..." }`. It is handled by `loginWithExternalId()` in
+`src/services/auth.ts`, which refuses unless every condition holds:
+
+1. The organization has `external_id_login_enabled`.
+2. The ID matches a user in that organization. **No accounts are created here** —
+   admins provision learners first, unknown IDs get `ID not recognized`.
+3. That user's role is `user`. An ID alone must never open the admin console, so
+   admins keep their password login.
+
+IDs are stored and compared in a canonical form (trimmed, upper-cased — see
+`normalizeExternalId`), so a learner typing theirs in either case still matches,
+and the unique constraint agrees with the login comparison.
+
+### Session length
+
+`generateToken()` accepts an optional `expiresInHours` that overrides
+`JWT_EXPIRATION` for a single token. Access logins pass the org's
+`external_id_session_hours` (12 by default); password and invite-link logins are
+untouched and keep the env default. The `auth_sessions` row gets the same
+expiry, so revocation checks stay consistent.
+
+### Admin provisioning
+
+Team routes carry `externalId` when the org runs access mode:
+- `GET /team` returns it per member.
+- `POST /team/invite-one` accepts it (also on a re-invite of an existing member,
+  which is how an ID gets attached to someone already in the org).
+- `PATCH /team/:userId` sets, changes, or clears it (`""` clears — that revokes
+  the person's access-page entry). Omitting the key leaves the stored value alone.
+
+An ID already held by a *different* member in the org is rejected with 409 — in
+access mode it is a login credential, so it has to point at one person.
+
+### Public metadata
+
+`GET /org/public` returns `externalIdLoginEnabled`, `externalIdLabel`, and
+`externalIdSessionHours` so the unauthenticated frontend knows whether to render
+`/access` and how to label the field. `GET /org/config` returns the same fields
+read-only for the admin UI; `PATCH /org/config` does not accept them.
+
 ## AI Assistant Notes
 
 This project includes semantic code search embeddings (qmd) for AI-powered codebase exploration.

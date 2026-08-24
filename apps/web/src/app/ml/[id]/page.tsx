@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ChatInterface } from "@/features/chat";
 import { CHAT_ENDPOINTS } from "@/features/chat";
-import { api, localizationFor, type Avatar as AvatarType, type LanguageCode } from "@/lib/api";
+import { api, localizationFor, type Avatar as AvatarType, type LanguageCode, getSignInPath } from "@/lib/api";
 import { startTimer, track, EVENTS } from "@/lib/analytics";
 import type { ChatAvatar } from "@/features/chat";
 import type { UIMessage } from "ai";
@@ -113,7 +113,7 @@ export default function MicrolearningChatPage() {
   // Auth redirect
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace("/login");
+      router.replace(getSignInPath());
     }
   }, [user, authLoading, router]);
 

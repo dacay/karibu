@@ -49,6 +49,10 @@ export interface Organization {
   subdomain: string;
   pronunciation: string | null;
   defaultAvatarId: string | null;
+  // ID-only access mode (`/access` page). See organizations table comments.
+  externalIdLoginEnabled: boolean;
+  externalIdLabel: string | null;
+  externalIdSessionHours: number;
   logoUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
